@@ -24,9 +24,9 @@ import {
   Chip,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon, ArrowBack as ArrowBackIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon, ArrowBack as ArrowBackIcon, Delete as DeleteIcon, Payment as PaymentIcon } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
-import { DEFAULT_CATEGORIES, Transaction } from '../types';
+import { DEFAULT_CATEGORIES, Transaction, Payment } from '../types';
 import TransactionSummary from './TransactionSummary';
 import MemberManagement from './MemberManagement';
 import ConfirmationDialog from './ConfirmationDialog';
@@ -50,9 +50,23 @@ const GroupDetails = () => {
     splitMethod: 'amount' as 'amount' | 'percentage',
     splits: [] as { memberId: string; amount: number; percentage?: number }[],
   });
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [newPayment, setNewPayment] = useState({
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    fromMemberId: '',
+    toMemberId: '',
+    notes: '',
+  });
+
+  console.log('GroupDetails rendered with groupId:', groupId);
+  console.log('Available groups:', groups);
+  
   const group = groups.find(g => g.id === groupId);
+  console.log('Found group:', group);
 
   if (!group) {
+    console.log('Group not found, returning error message');
     return <Typography>Group not found</Typography>;
   }
 
@@ -278,6 +292,42 @@ const GroupDetails = () => {
     return 100 - currentTotal;
   };
 
+  const handleAddPayment = () => {
+    if (newPayment.amount && newPayment.fromMemberId && newPayment.toMemberId) {
+      const updatedGroup = {
+        ...group,
+        payments: [
+          ...group.payments,
+          {
+            id: crypto.randomUUID(),
+            amount: parseFloat(newPayment.amount),
+            date: new Date(newPayment.date),
+            fromMemberId: newPayment.fromMemberId,
+            toMemberId: newPayment.toMemberId,
+            notes: newPayment.notes,
+          },
+        ],
+      };
+      updateGroup(updatedGroup);
+      setPaymentDialogOpen(false);
+      setNewPayment({
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        fromMemberId: '',
+        toMemberId: '',
+        notes: '',
+      });
+    }
+  };
+
+  const handleDeletePayment = (paymentId: string) => {
+    const updatedGroup = {
+      ...group,
+      payments: group.payments.filter(p => p.id !== paymentId),
+    };
+    updateGroup(updatedGroup);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
@@ -297,6 +347,14 @@ const GroupDetails = () => {
             sx={{ mr: 1 }}
           >
             Manage Members
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<PaymentIcon />}
+            onClick={() => setPaymentDialogOpen(true)}
+            sx={{ mr: 1 }}
+          >
+            Record Payment
           </Button>
           <Button
             variant="contained"
@@ -535,6 +593,78 @@ const GroupDetails = () => {
           </Button>
           <Button onClick={editingTransaction ? handleUpdateTransaction : handleAddTransaction} variant="contained">
             {editingTransaction ? 'Update' : 'Add'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog 
+        open={paymentDialogOpen} 
+        onClose={() => setPaymentDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Record Payment</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Amount"
+            type="number"
+            fullWidth
+            value={newPayment.amount}
+            onChange={(e) => setNewPayment(prev => ({ ...prev, amount: e.target.value }))}
+          />
+          <TextField
+            margin="dense"
+            label="Date"
+            type="date"
+            fullWidth
+            value={newPayment.date}
+            onChange={(e) => setNewPayment(prev => ({ ...prev, date: e.target.value }))}
+            InputLabelProps={{ shrink: true }}
+          />
+          <FormControl fullWidth margin="dense">
+            <InputLabel>From</InputLabel>
+            <Select
+              value={newPayment.fromMemberId}
+              label="From"
+              onChange={(e) => setNewPayment(prev => ({ ...prev, fromMemberId: e.target.value }))}
+            >
+              {group.members.map((member) => (
+                <MenuItem key={member.id} value={member.id}>
+                  {member.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth margin="dense">
+            <InputLabel>To</InputLabel>
+            <Select
+              value={newPayment.toMemberId}
+              label="To"
+              onChange={(e) => setNewPayment(prev => ({ ...prev, toMemberId: e.target.value }))}
+            >
+              {group.members
+                .filter(member => member.id !== newPayment.fromMemberId)
+                .map((member) => (
+                  <MenuItem key={member.id} value={member.id}>
+                    {member.name}
+                  </MenuItem>
+                ))}
+            </Select>
+          </FormControl>
+          <TextField
+            margin="dense"
+            label="Notes"
+            fullWidth
+            value={newPayment.notes}
+            onChange={(e) => setNewPayment(prev => ({ ...prev, notes: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleAddPayment} variant="contained">
+            Record Payment
           </Button>
         </DialogActions>
       </Dialog>

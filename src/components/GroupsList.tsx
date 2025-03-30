@@ -105,9 +105,9 @@ const GroupsList = () => {
             return (
               <ListItem
                 key={group.id}
-                button
                 onClick={() => navigate(`/group/${group.id}`)}
                 sx={{
+                  cursor: 'pointer',
                   '&:hover': {
                     backgroundColor: 'action.hover',
                   },
@@ -116,15 +116,9 @@ const GroupsList = () => {
                 <ListItemText
                   primary={group.name}
                   secondary={
-                    <Box>
-                      <Typography component="span" variant="body2" color="text.secondary">
-                        {stats.memberCount} {stats.memberCount === 1 ? 'member' : 'members'} • {stats.transactionCount} {stats.transactionCount === 1 ? 'transaction' : 'transactions'}
-                      </Typography>
-                      <Typography component="span" variant="body2" color="text.secondary" display="block">
-                        {formatCurrency(stats.totalAmount)} in transactions
-                      </Typography>
-                      <Typography component="span" variant="body2" color="text.secondary" display="block">
-                        {stats.dateRange}
+                    <Box component="span">
+                      <Typography component="span" variant="body2" color="textSecondary">
+                        {group.members.length} members • {group.transactions.length} transactions
                       </Typography>
                     </Box>
                   }

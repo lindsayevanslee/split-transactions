@@ -1,28 +1,34 @@
 import { Paper, Typography, List, ListItem, ListItemText, Box, Divider } from '@mui/material';
-import { Group, Transaction } from '../types';
+import { Group } from '../types';
 
 interface TransactionSummaryProps {
   group: Group;
 }
 
 const TransactionSummary = ({ group }: TransactionSummaryProps) => {
-  // Calculate net balance for each member
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
+  };
+
   const calculateBalances = () => {
     const balances = new Map<string, number>();
     
     // Initialize balances for all members
-    group.members.forEach(member => {
+    group.members?.forEach(member => {
       balances.set(member.id, 0);
     });
 
-    // Calculate net balance for each member
-    group.transactions.forEach(transaction => {
-      // Add the full amount to the payer's balance
+    // Calculate transaction balances
+    group.transactions?.forEach(transaction => {
+      // Add amount to payer's balance
       const payerBalance = balances.get(transaction.payerId) || 0;
       balances.set(transaction.payerId, payerBalance + transaction.amount);
 
-      // Subtract each member's share from their balance
-      transaction.splits.forEach(split => {
+      // Subtract split amounts from each member's balance
+      transaction.splits?.forEach(split => {
         const memberBalance = balances.get(split.memberId) || 0;
         balances.set(split.memberId, memberBalance - split.amount);
       });
@@ -31,7 +37,6 @@ const TransactionSummary = ({ group }: TransactionSummaryProps) => {
     return balances;
   };
 
-  // Calculate who owes whom
   const calculateDebts = (balances: Map<string, number>) => {
     const debts: Array<{
       from: string;
@@ -77,15 +82,13 @@ const TransactionSummary = ({ group }: TransactionSummaryProps) => {
     return debts;
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
-
   const balances = calculateBalances();
   const debts = calculateDebts(balances);
+  const sortedMembers = [...group.members].sort((a, b) => {
+    const balanceA = balances.get(a.id) || 0;
+    const balanceB = balances.get(b.id) || 0;
+    return balanceB - balanceA;
+  });
 
   const getMemberName = (memberId: string) => {
     return group.members.find(member => member.id === memberId)?.name || 'Unknown';
@@ -126,16 +129,21 @@ const TransactionSummary = ({ group }: TransactionSummaryProps) => {
           Net Balances
         </Typography>
         <List dense>
-          {group.members.map((member) => {
+          {sortedMembers.map((member) => {
             const balance = balances.get(member.id) || 0;
             return (
               <ListItem key={member.id}>
                 <ListItemText
                   primary={member.name}
-                  secondary={formatCurrency(balance)}
-                  sx={{
-                    color: balance > 0 ? 'success.main' : balance < 0 ? 'error.main' : 'text.primary'
-                  }}
+                  secondary={
+                    <Typography
+                      component="span"
+                      variant="body2"
+                      color={balance > 0 ? 'success.main' : balance < 0 ? 'error.main' : 'text.secondary'}
+                    >
+                      {balance > 0 ? 'Receives' : balance < 0 ? 'Owes' : 'Settled'}: {formatCurrency(Math.abs(balance))}
+                    </Typography>
+                  }
                 />
               </ListItem>
             );
