@@ -3,6 +3,7 @@ export interface Group {
   name: string;
   members: Member[];
   transactions: Transaction[];
+  payments: Payment[];
   customCategories: string[];
 }
 
@@ -18,21 +19,20 @@ export interface Transaction {
   category: string;
   notes: string;
   payerId: string;
-  splits: Split[];
-}
-
-export interface Split {
-  memberId: string;
-  amount: number;
-  percentage?: number;
+  splits: Array<{
+    memberId: string;
+    amount: number;
+    percentage?: number;
+  }>;
 }
 
 export interface Payment {
   id: string;
-  transactionId: string;
-  memberId: string;
   amount: number;
   date: Date;
+  fromMemberId: string;
+  toMemberId: string;
+  notes: string;
 }
 
 export const DEFAULT_CATEGORIES = [

@@ -35,6 +35,7 @@ const GroupsList = () => {
         name: newGroupName.trim(),
         members: [],
         transactions: [],
+        payments: [],
         customCategories: [],
       });
       setNewGroupName('');

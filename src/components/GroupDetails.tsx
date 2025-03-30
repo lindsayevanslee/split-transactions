@@ -293,11 +293,12 @@ const GroupDetails = () => {
   };
 
   const handleAddPayment = () => {
+    console.log('Attempting to add payment:', newPayment);
     if (newPayment.amount && newPayment.fromMemberId && newPayment.toMemberId) {
       const updatedGroup = {
         ...group,
         payments: [
-          ...group.payments,
+          ...(group.payments || []),
           {
             id: crypto.randomUUID(),
             amount: parseFloat(newPayment.amount),
@@ -308,6 +309,7 @@ const GroupDetails = () => {
           },
         ],
       };
+      console.log('Updating group with new payment:', updatedGroup);
       updateGroup(updatedGroup);
       setPaymentDialogOpen(false);
       setNewPayment({
@@ -316,6 +318,12 @@ const GroupDetails = () => {
         fromMemberId: '',
         toMemberId: '',
         notes: '',
+      });
+    } else {
+      console.log('Missing required payment fields:', {
+        amount: newPayment.amount,
+        fromMemberId: newPayment.fromMemberId,
+        toMemberId: newPayment.toMemberId
       });
     }
   };
@@ -451,6 +459,53 @@ const GroupDetails = () => {
                     <TableRow>
                       <TableCell colSpan={6} align="center">
                         No transactions yet
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
+              Payments
+            </Typography>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Date</TableCell>
+                    <TableCell>From</TableCell>
+                    <TableCell>To</TableCell>
+                    <TableCell>Amount</TableCell>
+                    <TableCell>Notes</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {[...(group.payments || [])]
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map((payment) => (
+                      <TableRow key={payment.id}>
+                        <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
+                        <TableCell>{group.members.find(m => m.id === payment.fromMemberId)?.name}</TableCell>
+                        <TableCell>{group.members.find(m => m.id === payment.toMemberId)?.name}</TableCell>
+                        <TableCell>{formatCurrency(payment.amount)}</TableCell>
+                        <TableCell>{payment.notes}</TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeletePayment(payment.id)}
+                            color="error"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  {(!group.payments || group.payments.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center">
+                        No payments yet
                       </TableCell>
                     </TableRow>
                   )}
