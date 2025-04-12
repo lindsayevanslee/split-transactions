@@ -12,7 +12,7 @@ import {
   Select,
   MenuItem
 } from '@mui/material';
-import { Group, Payment, Member } from '../types';
+import { Group, Payment } from '../types';
 
 interface PaymentFormProps {
   open: boolean;
@@ -51,8 +51,8 @@ const PaymentForm = ({ open, onClose, onSubmit, group, payment }: PaymentFormPro
       amount: parseFloat(amount),
       fromId,
       toId,
-      notes,
-      date: new Date()
+      date: new Date(),
+      notes
     });
 
     onClose();
@@ -62,7 +62,7 @@ const PaymentForm = ({ open, onClose, onSubmit, group, payment }: PaymentFormPro
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{payment ? 'Edit Payment' : 'Add Payment'}</DialogTitle>
       <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid container spacing={2}>
           <Grid item xs={12}>
             <TextField
               fullWidth
@@ -98,11 +98,9 @@ const PaymentForm = ({ open, onClose, onSubmit, group, payment }: PaymentFormPro
                 onChange={(e) => setToId(e.target.value)}
                 label="To"
               >
-                {group.members
-                  .filter(member => member.id !== fromId)
-                  .map((member) => (
-                    <MenuItem key={member.id} value={member.id}>{member.name}</MenuItem>
-                  ))}
+                {group.members.map((member) => (
+                  <MenuItem key={member.id} value={member.id}>{member.name}</MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Grid>

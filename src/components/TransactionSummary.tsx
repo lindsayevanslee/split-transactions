@@ -41,12 +41,12 @@ const TransactionSummary = ({ group }: TransactionSummaryProps) => {
     // Calculate payment balances
     group.payments?.forEach(payment => {
       // When someone makes a payment, reduce what they owe
-      const fromBalance = balances.get(payment.fromMemberId) || 0;
-      balances.set(payment.fromMemberId, fromBalance + payment.amount);
+      const fromBalance = balances.get(payment.fromId) || 0;
+      balances.set(payment.fromId, fromBalance + payment.amount);
 
       // When someone receives a payment, reduce what they should receive
-      const toBalance = balances.get(payment.toMemberId) || 0;
-      balances.set(payment.toMemberId, toBalance - payment.amount);
+      const toBalance = balances.get(payment.toId) || 0;
+      balances.set(payment.toId, toBalance - payment.amount);
     });
 
     return balances;

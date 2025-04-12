@@ -316,32 +316,29 @@ const GroupDetails = () => {
     return 100 - currentTotal;
   };
 
-  const handleAddPayment = () => {
-    if (newPayment.amount && newPayment.fromMemberId && newPayment.toMemberId) {
-      const updatedGroup = {
-        ...group,
-        payments: [
-          ...(group.payments || []),
-          {
-            id: crypto.randomUUID(),
-            amount: parseFloat(newPayment.amount),
-            date: new Date(newPayment.date),
-            fromId: newPayment.fromMemberId,
-            toId: newPayment.toMemberId,
-            notes: newPayment.notes,
-          },
-        ],
-      };
-      updateGroup(groupId!, updatedGroup);
-      setPaymentDialogOpen(false);
-      setNewPayment({
-        amount: '',
-        date: new Date().toISOString().split('T')[0],
-        fromMemberId: '',
-        toMemberId: '',
-        notes: '',
-      });
-    }
+  const handleAddPayment = (payment: Omit<Payment, 'id'>) => {
+    if (!group || !groupId) return;
+
+    const updatedGroup: Group = {
+      id: group.id,
+      name: group.name,
+      userId: group.userId,
+      members: group.members,
+      transactions: group.transactions,
+      payments: [
+        ...group.payments,
+        {
+          ...payment,
+          id: crypto.randomUUID(),
+          date: new Date(payment.date),
+        },
+      ],
+      customCategories: group.customCategories,
+      createdAt: group.createdAt,
+      updatedAt: new Date(),
+    };
+    updateGroup(groupId, updatedGroup);
+    setPaymentDialogOpen(false);
   };
 
   const handleDeletePayment = (paymentId: string) => {
@@ -364,34 +361,31 @@ const GroupDetails = () => {
     setPaymentDialogOpen(true);
   };
 
-  const handleUpdatePayment = () => {
-    if (newPayment.amount && newPayment.fromMemberId && newPayment.toMemberId && editingPayment) {
-      const updatedGroup = {
-        ...group,
-        payments: group.payments.map(payment =>
-          payment.id === editingPayment.id
-            ? {
-                ...payment,
-                amount: parseFloat(newPayment.amount),
-                date: new Date(newPayment.date),
-                fromMemberId: newPayment.fromMemberId,
-                toMemberId: newPayment.toMemberId,
-                notes: newPayment.notes,
-              }
-            : payment
-        ),
-      };
-      updateGroup(groupId!, updatedGroup);
-      setPaymentDialogOpen(false);
-      setEditingPayment(null);
-      setNewPayment({
-        amount: '',
-        date: new Date().toISOString().split('T')[0],
-        fromMemberId: '',
-        toMemberId: '',
-        notes: '',
-      });
-    }
+  const handleUpdatePayment = (payment: Omit<Payment, 'id'>) => {
+    if (!group || !groupId || !editingPayment) return;
+
+    const updatedGroup: Group = {
+      id: group.id,
+      name: group.name,
+      userId: group.userId,
+      members: group.members,
+      transactions: group.transactions,
+      payments: group.payments.map(p =>
+        p.id === editingPayment.id
+          ? {
+              ...payment,
+              id: editingPayment.id,
+              date: new Date(payment.date),
+            }
+          : p
+      ),
+      customCategories: group.customCategories,
+      createdAt: group.createdAt,
+      updatedAt: new Date(),
+    };
+    updateGroup(groupId, updatedGroup);
+    setPaymentDialogOpen(false);
+    setEditingPayment(null);
   };
 
   const handleAddMember = async () => {
