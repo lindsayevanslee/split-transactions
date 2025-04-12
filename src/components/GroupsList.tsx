@@ -36,10 +36,13 @@ const GroupsList = () => {
     try {
       await createGroup({
         name: newGroupName.trim(),
+        userId: user?.uid || '',
         members: [],
         transactions: [],
         payments: [],
-        customCategories: []
+        customCategories: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
       });
       setNewGroupName('');
       setOpen(false);

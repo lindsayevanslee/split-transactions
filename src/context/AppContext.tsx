@@ -17,7 +17,7 @@ interface AppContextType {
   groups: Group[];
   loading: boolean;
   error: string | null;
-  createGroup: (name: string) => Promise<void>;
+  createGroup: (groupData: Omit<Group, 'id'>) => Promise<void>;
   updateGroup: (id: string, group: Group) => Promise<void>;
   deleteGroup: (id: string) => Promise<void>;
 }
@@ -57,15 +57,18 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
             id: doc.id,
             name: data.name,
             userId: data.userId,
-            members: data.members,
-            transactions: data.transactions.map((t: { date: Timestamp }) => ({
+            members: data.members || [],
+            transactions: (data.transactions || []).map((t: { date: Timestamp }) => ({
               ...t,
               date: t.date.toDate(),
             })),
-            payments: data.payments.map((p: { date: Timestamp }) => ({
+            payments: (data.payments || []).map((p: { date: Timestamp }) => ({
               ...p,
               date: p.date.toDate(),
             })),
+            customCategories: data.customCategories || [],
+            createdAt: data.createdAt?.toDate() || new Date(),
+            updatedAt: data.updatedAt?.toDate() || new Date(),
           });
         });
         setGroups(groupsData);
@@ -80,20 +83,20 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     return () => unsubscribe();
   }, [user]);
 
-  const createGroup = async (name: string) => {
+  const createGroup = async (groupData: Omit<Group, 'id'>) => {
     if (!user) throw new Error('User must be logged in');
 
     try {
       const groupRef = doc(collection(db, 'groups'));
-      const newGroup: Omit<Group, 'id'> = {
-        name,
+      const newGroup = {
+        ...groupData,
         userId: user.uid,
-        members: [],
-        transactions: [],
-        payments: [],
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
       };
       await setDoc(groupRef, newGroup);
     } catch (error) {
+      console.error('Firestore error:', error);
       throw new Error('Failed to create group');
     }
   };
@@ -104,18 +107,30 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const groupRef = doc(db, 'groups', id);
       const { id: _, ...groupData } = group;
-      await setDoc(groupRef, {
+      
+      // Convert all dates to Firestore timestamps
+      const firestoreData = {
         ...groupData,
         transactions: groupData.transactions.map((t) => ({
           ...t,
           date: Timestamp.fromDate(new Date(t.date)),
+          splits: t.splits.map(split => ({
+            ...split,
+            amount: Number(split.amount),
+            percentage: split.percentage ? Number(split.percentage) : undefined
+          }))
         })),
         payments: groupData.payments.map((p) => ({
           ...p,
           date: Timestamp.fromDate(new Date(p.date)),
+          amount: Number(p.amount)
         })),
-      });
+        updatedAt: Timestamp.now()
+      };
+
+      await setDoc(groupRef, firestoreData, { merge: true });
     } catch (error) {
+      console.error('Firestore error:', error);
       throw new Error('Failed to update group');
     }
   };
@@ -127,6 +142,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       const groupRef = doc(db, 'groups', id);
       await deleteDoc(groupRef);
     } catch (error) {
+      console.error('Firestore error:', error);
       throw new Error('Failed to delete group');
     }
   };

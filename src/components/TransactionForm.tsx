@@ -12,7 +12,6 @@ import {
   Select,
   MenuItem,
   Typography,
-  Box,
   Slider
 } from '@mui/material';
 import { Group, Transaction, Member } from '../types';
@@ -31,7 +30,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [payerId, setPayerId] = useState('');
-  const [split, setSplit] = useState<{ [key: string]: number }>({});
+  const [splits, setSplits] = useState<{ [key: string]: number }>({});
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -40,52 +39,62 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
       setAmount(transaction.amount.toString());
       setCategory(transaction.category);
       setPayerId(transaction.payerId);
-      setSplit(transaction.split);
+      setSplits(transaction.splits.reduce((acc, split) => ({
+        ...acc,
+        [split.memberId]: split.percentage || 0
+      }), {}));
       setNotes(transaction.notes || '');
     } else {
       setDescription('');
       setAmount('');
       setCategory('');
       setPayerId('');
-      setSplit({});
+      setSplits({});
       setNotes('');
     }
   }, [transaction]);
 
   const handleSplitChange = (memberId: string, value: number) => {
-    setSplit(prev => ({
+    setSplits(prev => ({
       ...prev,
       [memberId]: value
     }));
   };
 
   const handleSubmit = () => {
-    if (!description || !amount || !category || !payerId || Object.keys(split).length === 0) {
+    if (!description || !amount || !category || !payerId || Object.keys(splits).length === 0) {
       return;
     }
 
+    const totalAmount = parseFloat(amount);
+    const transactionSplits = Object.entries(splits).map(([memberId, percentage]) => ({
+      memberId,
+      amount: (percentage / 100) * totalAmount,
+      percentage
+    }));
+
     onSubmit({
       description,
-      amount: parseFloat(amount),
+      amount: totalAmount,
       category,
       payerId,
-      split,
-      notes,
-      date: new Date()
+      splits: transactionSplits,
+      date: new Date(),
+      notes: notes
     });
 
     onClose();
   };
 
-  const totalSplit = Object.values(split).reduce((sum, value) => sum + value, 0);
+  const totalSplit = Object.values(splits).reduce((sum, value) => sum + value, 0);
   const isValid = totalSplit === 100;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>{transaction ? 'Edit Transaction' : 'Add Transaction'}</DialogTitle>
       <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid xs={12}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
             <TextField
               fullWidth
               label="Description"
@@ -94,7 +103,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
               required
             />
           </Grid>
-          <Grid xs={12} sm={6}>
+          <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
               label="Amount"
@@ -107,7 +116,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
               }}
             />
           </Grid>
-          <Grid xs={12} sm={6}>
+          <Grid item xs={12} sm={6}>
             <FormControl fullWidth required>
               <InputLabel>Category</InputLabel>
               <Select
@@ -121,7 +130,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
               </Select>
             </FormControl>
           </Grid>
-          <Grid xs={12}>
+          <Grid item xs={12}>
             <FormControl fullWidth required>
               <InputLabel>Paid by</InputLabel>
               <Select
@@ -135,29 +144,35 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
               </Select>
             </FormControl>
           </Grid>
-          <Grid xs={12}>
+          <Grid item xs={12}>
             <Typography variant="subtitle1" gutterBottom>
               Split between members
             </Typography>
             {group.members.map((member) => (
-              <Box key={member.id} sx={{ mb: 2 }}>
-                <Typography>{member.name}</Typography>
-                <Slider
-                  value={split[member.id] || 0}
-                  onChange={(_, value) => handleSplitChange(member.id, value as number)}
-                  valueLabelDisplay="auto"
-                  valueLabelFormat={(value) => `${value}%`}
-                  min={0}
-                  max={100}
-                  step={1}
-                />
-              </Box>
+              <Grid container spacing={2} key={member.id} alignItems="center">
+                <Grid item xs={6}>
+                  <Typography>{member.name}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    type="number"
+                    label="Percentage"
+                    value={splits[member.id] || 0}
+                    onChange={(e) => {
+                      const newSplits = { ...splits };
+                      newSplits[member.id] = parseFloat(e.target.value) || 0;
+                      setSplits(newSplits);
+                    }}
+                  />
+                </Grid>
+              </Grid>
             ))}
             <Typography color={isValid ? 'success.main' : 'error.main'}>
               Total: {totalSplit}%
             </Typography>
           </Grid>
-          <Grid xs={12}>
+          <Grid item xs={12}>
             <TextField
               fullWidth
               label="Notes"
