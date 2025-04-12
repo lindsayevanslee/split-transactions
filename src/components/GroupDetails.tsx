@@ -51,6 +51,7 @@ const GroupDetails = () => {
     splits: [] as { memberId: string; amount: number; percentage?: number }[],
   });
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [newPayment, setNewPayment] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -356,6 +357,48 @@ const GroupDetails = () => {
     updateGroup(updatedGroup);
   };
 
+  const handleEditPayment = (payment: Payment) => {
+    setEditingPayment(payment);
+    setNewPayment({
+      amount: payment.amount.toString(),
+      date: new Date(payment.date).toISOString().split('T')[0],
+      fromMemberId: payment.fromMemberId,
+      toMemberId: payment.toMemberId,
+      notes: payment.notes,
+    });
+    setPaymentDialogOpen(true);
+  };
+
+  const handleUpdatePayment = () => {
+    if (newPayment.amount && newPayment.fromMemberId && newPayment.toMemberId && editingPayment) {
+      const updatedGroup = {
+        ...group,
+        payments: group.payments.map(payment =>
+          payment.id === editingPayment.id
+            ? {
+                ...payment,
+                amount: parseFloat(newPayment.amount),
+                date: new Date(newPayment.date),
+                fromMemberId: newPayment.fromMemberId,
+                toMemberId: newPayment.toMemberId,
+                notes: newPayment.notes,
+              }
+            : payment
+        ),
+      };
+      updateGroup(updatedGroup);
+      setPaymentDialogOpen(false);
+      setEditingPayment(null);
+      setNewPayment({
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        fromMemberId: '',
+        toMemberId: '',
+        notes: '',
+      });
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
@@ -512,6 +555,13 @@ const GroupDetails = () => {
                         <TableCell>{formatCurrency(payment.amount)}</TableCell>
                         <TableCell>{payment.notes}</TableCell>
                         <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditPayment(payment)}
+                            sx={{ mr: 1 }}
+                          >
+                            <EditIcon />
+                          </IconButton>
                           <IconButton
                             size="small"
                             onClick={() => handleDeletePayment(payment.id)}
@@ -674,11 +724,14 @@ const GroupDetails = () => {
 
       <Dialog 
         open={paymentDialogOpen} 
-        onClose={() => setPaymentDialogOpen(false)}
+        onClose={() => {
+          setPaymentDialogOpen(false);
+          setEditingPayment(null);
+        }}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Record Payment</DialogTitle>
+        <DialogTitle>{editingPayment ? 'Edit Payment' : 'Record Payment'}</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -737,9 +790,14 @@ const GroupDetails = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPaymentDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleAddPayment} variant="contained">
-            Record Payment
+          <Button onClick={() => {
+            setPaymentDialogOpen(false);
+            setEditingPayment(null);
+          }}>
+            Cancel
+          </Button>
+          <Button onClick={editingPayment ? handleUpdatePayment : handleAddPayment} variant="contained">
+            {editingPayment ? 'Update' : 'Record'}
           </Button>
         </DialogActions>
       </Dialog>
