@@ -23,15 +23,30 @@ const TransactionSummary = ({ group }: TransactionSummaryProps) => {
 
     // Calculate transaction balances
     group.transactions?.forEach(transaction => {
-      // Add amount to payer's balance
+      // For the payer, they paid the full amount but should only pay their share
+      const payerShare = transaction.splits?.find(split => split.memberId === transaction.payerId)?.amount || 0;
       const payerBalance = balances.get(transaction.payerId) || 0;
-      balances.set(transaction.payerId, payerBalance + transaction.amount);
+      // The payer effectively receives (total amount - their share) because they paid more than their share
+      balances.set(transaction.payerId, payerBalance + (transaction.amount - payerShare));
 
-      // Subtract split amounts from each member's balance
+      // For other members, they owe their portion
       transaction.splits?.forEach(split => {
-        const memberBalance = balances.get(split.memberId) || 0;
-        balances.set(split.memberId, memberBalance - split.amount);
+        if (split.memberId !== transaction.payerId) {
+          const memberBalance = balances.get(split.memberId) || 0;
+          balances.set(split.memberId, memberBalance - split.amount);
+        }
       });
+    });
+
+    // Calculate payment balances
+    group.payments?.forEach(payment => {
+      // When someone makes a payment, reduce what they owe
+      const fromBalance = balances.get(payment.fromMemberId) || 0;
+      balances.set(payment.fromMemberId, fromBalance + payment.amount);
+
+      // When someone receives a payment, reduce what they should receive
+      const toBalance = balances.get(payment.toMemberId) || 0;
+      balances.set(payment.toMemberId, toBalance - payment.amount);
     });
 
     return balances;
@@ -57,25 +72,25 @@ const TransactionSummary = ({ group }: TransactionSummaryProps) => {
     let j = sortedBalances.length - 1;
 
     while (i < j) {
-      const debtor = sortedBalances[i];
-      const creditor = sortedBalances[j];
+      const creditor = sortedBalances[i];  // Person who should receive money
+      const debtor = sortedBalances[j];    // Person who owes money
 
-      if (Math.abs(debtor.balance) > 0.01 && Math.abs(creditor.balance) > 0.01) {
-        const amount = Math.min(Math.abs(debtor.balance), creditor.balance);
+      if (Math.abs(creditor.balance) > 0.01 && Math.abs(debtor.balance) > 0.01) {
+        const amount = Math.min(creditor.balance, Math.abs(debtor.balance));
         debts.push({
-          from: debtor.id,
-          to: creditor.id,
+          from: debtor.id,    // Person who owes
+          to: creditor.id,    // Person who should receive
           amount
         });
 
-        debtor.balance -= amount;
         creditor.balance -= amount;
+        debtor.balance += amount;
 
-        if (Math.abs(debtor.balance) < 0.01) i++;
-        if (Math.abs(creditor.balance) < 0.01) j--;
+        if (Math.abs(creditor.balance) < 0.01) i++;
+        if (Math.abs(debtor.balance) < 0.01) j--;
       } else {
-        if (Math.abs(debtor.balance) < 0.01) i++;
-        if (Math.abs(creditor.balance) < 0.01) j--;
+        if (Math.abs(creditor.balance) < 0.01) i++;
+        if (Math.abs(debtor.balance) < 0.01) j--;
       }
     }
 
