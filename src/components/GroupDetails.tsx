@@ -170,12 +170,32 @@ const GroupDetails = () => {
   const handleAddTransaction = () => {
     if (newTransaction.amount && newTransaction.category && newTransaction.payerId) {
       const amount = parseFloat(newTransaction.amount);
-      const splits = newTransaction.splitType === 'even'
-        ? group.members.map(member => ({
-            memberId: member.id,
-            amount: amount / group.members.length,
-          }))
-        : newTransaction.splits;
+      let splits;
+      
+      if (newTransaction.splitType === 'even') {
+        splits = group.members.map(member => ({
+          memberId: member.id,
+          amount: amount / group.members.length,
+        }));
+      } else {
+        // For custom splits, calculate amounts based on the split method
+        splits = newTransaction.splits.map(split => {
+          if (newTransaction.splitMethod === 'percentage') {
+            // Calculate amount from percentage
+            return {
+              memberId: split.memberId,
+              amount: (split.percentage || 0) / 100 * amount,
+              percentage: split.percentage
+            };
+          } else {
+            // Use the direct amount
+            return {
+              memberId: split.memberId,
+              amount: split.amount
+            };
+          }
+        });
+      }
 
       const updatedGroup = {
         ...group,
