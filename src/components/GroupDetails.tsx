@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
@@ -22,19 +22,58 @@ import {
   TableHead,
   TableRow,
   Chip,
+  Container,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  CircularProgress,
+  Alert,
+  Tabs,
+  Tab
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon, ArrowBack as ArrowBackIcon, Delete as DeleteIcon, Payment as PaymentIcon } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
-import { DEFAULT_CATEGORIES, Transaction, Payment } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { DEFAULT_CATEGORIES, Transaction, Payment, Group, Member } from '../types';
 import TransactionSummary from './TransactionSummary';
 import MemberManagement from './MemberManagement';
 import ConfirmationDialog from './ConfirmationDialog';
+import TransactionForm from './TransactionForm';
+import PaymentForm from './PaymentForm';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`simple-tabpanel-${index}`}
+      aria-labelledby={`simple-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
 
 const GroupDetails = () => {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
-  const { groups, updateGroup } = useApp();
+  const { groups, loading, error, updateGroup } = useApp();
+  const { user } = useAuth();
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -59,17 +98,21 @@ const GroupDetails = () => {
     toMemberId: '',
     notes: '',
   });
+  const [group, setGroup] = useState<Group | null>(null);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [open, setOpen] = useState(false);
+  const [tabValue, setTabValue] = useState(0);
 
-  console.log('GroupDetails rendered with groupId:', groupId);
-  console.log('Available groups:', groups);
-  
-  const group = groups.find(g => g.id === groupId);
-  console.log('Found group:', group);
-
-  if (!group) {
-    console.log('Group not found, returning error message');
-    return <Typography>Group not found</Typography>;
-  }
+  useEffect(() => {
+    if (groupId && groups.length > 0) {
+      const foundGroup = groups.find(g => g.id === groupId);
+      if (foundGroup) {
+        setGroup(foundGroup);
+      } else {
+        navigate('/groups');
+      }
+    }
+  }, [groupId, groups, navigate]);
 
   const handleDeleteClick = (type: 'transaction' | 'member', id: string) => {
     setItemToDelete({ type, id });
@@ -98,7 +141,7 @@ const GroupDetails = () => {
       updatedGroup.members = group.members.filter(m => m.id !== itemToDelete.id);
     }
 
-    updateGroup(updatedGroup);
+    updateGroup(groupId!, updatedGroup);
     setDeleteDialogOpen(false);
     setItemToDelete(null);
   };
@@ -152,7 +195,7 @@ const GroupDetails = () => {
             : transaction
         ),
       };
-      updateGroup(updatedGroup);
+      updateGroup(groupId!, updatedGroup);
       setTransactionDialogOpen(false);
       setEditingTransaction(null);
       setNewTransaction({
@@ -213,7 +256,7 @@ const GroupDetails = () => {
           },
         ],
       };
-      updateGroup(updatedGroup);
+      updateGroup(groupId!, updatedGroup);
       setTransactionDialogOpen(false);
       setNewTransaction({
         amount: '',
@@ -331,7 +374,7 @@ const GroupDetails = () => {
         ],
       };
       console.log('Updating group with new payment:', updatedGroup);
-      updateGroup(updatedGroup);
+      updateGroup(groupId!, updatedGroup);
       setPaymentDialogOpen(false);
       setNewPayment({
         amount: '',
@@ -354,7 +397,7 @@ const GroupDetails = () => {
       ...group,
       payments: group.payments.filter(p => p.id !== paymentId),
     };
-    updateGroup(updatedGroup);
+    updateGroup(groupId!, updatedGroup);
   };
 
   const handleEditPayment = (payment: Payment) => {
@@ -386,7 +429,7 @@ const GroupDetails = () => {
             : payment
         ),
       };
-      updateGroup(updatedGroup);
+      updateGroup(groupId!, updatedGroup);
       setPaymentDialogOpen(false);
       setEditingPayment(null);
       setNewPayment({
@@ -399,408 +442,274 @@ const GroupDetails = () => {
     }
   };
 
+  const handleAddMember = async () => {
+    if (!newMemberName.trim() || !group) return;
+
+    try {
+      const updatedGroup: Group = {
+        ...group,
+        members: [...group.members, { id: crypto.randomUUID(), name: newMemberName.trim() }]
+      };
+      await updateGroup(groupId!, updatedGroup);
+      setNewMemberName('');
+      setOpen(false);
+    } catch (err) {
+      console.error('Error adding member:', err);
+    }
+  };
+
+  const handleDeleteMember = async (memberId: string) => {
+    if (!group) return;
+
+    try {
+      const updatedGroup: Group = {
+        ...group,
+        members: group.members.filter((m: Member) => m.id !== memberId)
+      };
+      await updateGroup(groupId!, updatedGroup);
+    } catch (err) {
+      console.error('Error deleting member:', err);
+    }
+  };
+
+  if (!user) {
+    return (
+      <Container>
+        <Alert severity="info">Please sign in to view group details.</Alert>
+      </Container>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Container sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container>
+        <Alert severity="error">{error}</Alert>
+      </Container>
+    );
+  }
+
+  if (!group) {
+    return null;
+  }
+
+  const getMemberName = (id: string): string => {
+    const member = group.members.find(m => m.id === id);
+    return member?.name || 'Unknown';
+  };
+
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <IconButton onClick={() => navigate('/')} size="large">
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h4" component="h1">
-            {group.name}
-          </Typography>
-        </div>
-        <div>
-          <Button
-            variant="outlined"
-            startIcon={<PeopleIcon />}
-            onClick={() => setMemberDialogOpen(true)}
-            sx={{ mr: 1 }}
-          >
-            Manage Members
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<PaymentIcon />}
-            onClick={() => setPaymentDialogOpen(true)}
-            sx={{ mr: 1 }}
-          >
-            Record Payment
-          </Button>
+    <Container>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4" component="h1">
+          {group.name}
+        </Typography>
+        <Button variant="contained" onClick={() => setMemberDialogOpen(true)}>
+          Add Member
+        </Button>
+      </Box>
+
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
+          <Tab label="Summary" />
+          <Tab label="Transactions" />
+          <Tab label="Payments" />
+        </Tabs>
+      </Box>
+
+      <TabPanel value={tabValue} index={0}>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Members
+              </Typography>
+              <List>
+                {group.members.map((member) => (
+                  <ListItem
+                    key={member.id}
+                    sx={{ mb: 1, borderRadius: 1, bgcolor: 'background.paper' }}
+                  >
+                    <ListItemText primary={member.name} />
+                    <ListItemSecondaryAction>
+                      <IconButton
+                        edge="end"
+                        aria-label="delete"
+                        onClick={() => handleDeleteMember(member.id)}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <TransactionSummary group={group} />
+          </Grid>
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={1}>
+        <Box sx={{ mb: 3 }}>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => {
-              setEditingTransaction(null);
-              setNewTransaction({
-                amount: '',
-                date: new Date().toISOString().split('T')[0],
-                category: '',
-                notes: '',
-                payerId: '',
-                splitType: 'even',
-                splitMethod: 'amount',
-                splits: [],
-              });
-              setTransactionDialogOpen(true);
-            }}
+            onClick={() => setTransactionDialogOpen(true)}
           >
             Add Transaction
           </Button>
-        </div>
-      </div>
+        </Box>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={3}>
-          <TransactionSummary group={group} />
-        </Grid>
-        <Grid item xs={12} md={9}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Members
-            </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 3 }}>
-              {group.members.map((member) => (
-                <Chip
-                  key={member.id}
-                  label={member.name}
-                  variant="outlined"
-                  sx={{ m: 0.5 }}
-                />
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Date</TableCell>
+                <TableCell>Description</TableCell>
+                <TableCell>Amount</TableCell>
+                <TableCell>Paid by</TableCell>
+                <TableCell>Category</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {group.transactions.map((transaction) => (
+                <TableRow key={transaction.id}>
+                  <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
+                  <TableCell>{transaction.description}</TableCell>
+                  <TableCell>{formatCurrency(transaction.amount)}</TableCell>
+                  <TableCell>{getMemberName(transaction.payerId)}</TableCell>
+                  <TableCell>{transaction.category}</TableCell>
+                  <TableCell>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setEditingTransaction(transaction);
+                        setTransactionDialogOpen(true);
+                      }}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteClick('transaction', transaction.id)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
               ))}
-              {group.members.length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  No members yet
-                </Typography>
-              )}
-            </Box>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </TabPanel>
 
-            <Typography variant="h6" gutterBottom>
-              Transactions
-            </Typography>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Category</TableCell>
-                    <TableCell>Amount</TableCell>
-                    <TableCell>Paid By</TableCell>
-                    <TableCell>Notes</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {[...group.transactions]
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((transaction) => (
-                      <TableRow key={transaction.id}>
-                        <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                        <TableCell>{transaction.category}</TableCell>
-                        <TableCell>{formatCurrency(transaction.amount)}</TableCell>
-                        <TableCell>{group.members.find(m => m.id === transaction.payerId)?.name}</TableCell>
-                        <TableCell>{transaction.notes}</TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleEditTransaction(transaction)}
-                            sx={{ mr: 1 }}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleDeleteClick('transaction', transaction.id)}
-                            color="error"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  {group.transactions.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} align="center">
-                        No transactions yet
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+      <TabPanel value={tabValue} index={2}>
+        <Box sx={{ mb: 3 }}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setPaymentDialogOpen(true)}
+          >
+            Add Payment
+          </Button>
+        </Box>
 
-            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
-              Payments
-            </Typography>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Date</TableCell>
-                    <TableCell>From</TableCell>
-                    <TableCell>To</TableCell>
-                    <TableCell>Amount</TableCell>
-                    <TableCell>Notes</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {[...(group.payments || [])]
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((payment) => (
-                      <TableRow key={payment.id}>
-                        <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
-                        <TableCell>{group.members.find(m => m.id === payment.fromMemberId)?.name}</TableCell>
-                        <TableCell>{group.members.find(m => m.id === payment.toMemberId)?.name}</TableCell>
-                        <TableCell>{formatCurrency(payment.amount)}</TableCell>
-                        <TableCell>{payment.notes}</TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleEditPayment(payment)}
-                            sx={{ mr: 1 }}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleDeletePayment(payment.id)}
-                            color="error"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  {(!group.payments || group.payments.length === 0) && (
-                    <TableRow>
-                      <TableCell colSpan={6} align="center">
-                        No payments yet
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
-      </Grid>
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Date</TableCell>
+                <TableCell>From</TableCell>
+                <TableCell>To</TableCell>
+                <TableCell>Amount</TableCell>
+                <TableCell>Notes</TableCell>
+                <TableCell>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {group.payments.map((payment) => (
+                <TableRow key={payment.id}>
+                  <TableCell>{new Date(payment.date).toLocaleDateString()}</TableCell>
+                  <TableCell>{getMemberName(payment.fromId)}</TableCell>
+                  <TableCell>{getMemberName(payment.toId)}</TableCell>
+                  <TableCell>{formatCurrency(payment.amount)}</TableCell>
+                  <TableCell>{payment.notes}</TableCell>
+                  <TableCell>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setEditingPayment(payment);
+                        setPaymentDialogOpen(true);
+                      }}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeletePayment(payment.id)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </TabPanel>
 
-      <MemberManagement
-        group={group}
-        open={memberDialogOpen}
-        onClose={() => setMemberDialogOpen(false)}
-        onUpdateGroup={updateGroup}
-        onDeleteMember={(memberId) => handleDeleteClick('member', memberId)}
-      />
+      <Dialog open={memberDialogOpen} onClose={() => setMemberDialogOpen(false)}>
+        <DialogTitle>Add New Member</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Member Name"
+            fullWidth
+            value={newMemberName}
+            onChange={(e) => setNewMemberName(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMemberDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleAddMember} variant="contained">
+            Add
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      <Dialog 
-        open={transactionDialogOpen} 
+      <TransactionForm
+        open={transactionDialogOpen}
         onClose={() => {
           setTransactionDialogOpen(false);
           setEditingTransaction(null);
         }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>{editingTransaction ? 'Edit Transaction' : 'Add New Transaction'}</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Amount"
-            type="number"
-            fullWidth
-            value={newTransaction.amount}
-            onChange={(e) => setNewTransaction(prev => ({ ...prev, amount: e.target.value }))}
-          />
-          <TextField
-            margin="dense"
-            label="Date"
-            type="date"
-            fullWidth
-            value={newTransaction.date}
-            onChange={(e) => setNewTransaction(prev => ({ ...prev, date: e.target.value }))}
-            InputLabelProps={{ shrink: true }}
-          />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Category</InputLabel>
-            <Select
-              value={newTransaction.category}
-              label="Category"
-              onChange={(e) => setNewTransaction(prev => ({ ...prev, category: e.target.value }))}
-            >
-              {DEFAULT_CATEGORIES.map((category) => (
-                <MenuItem key={category} value={category}>
-                  {category}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            margin="dense"
-            label="Notes"
-            fullWidth
-            value={newTransaction.notes}
-            onChange={(e) => setNewTransaction(prev => ({ ...prev, notes: e.target.value }))}
-          />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Paid By</InputLabel>
-            <Select
-              value={newTransaction.payerId}
-              label="Paid By"
-              onChange={(e) => setNewTransaction(prev => ({ ...prev, payerId: e.target.value }))}
-            >
-              {group.members.map((member) => (
-                <MenuItem key={member.id} value={member.id}>
-                  {member.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Split Type</InputLabel>
-            <Select
-              value={newTransaction.splitType}
-              label="Split Type"
-              onChange={(e) => handleSplitTypeChange(e.target.value as 'even' | 'custom')}
-            >
-              <MenuItem value="even">Split Evenly</MenuItem>
-              <MenuItem value="custom">Custom Split</MenuItem>
-            </Select>
-          </FormControl>
-          {newTransaction.splitType === 'custom' && (
-            <>
-              <FormControl fullWidth margin="dense">
-                <InputLabel>Split Method</InputLabel>
-                <Select
-                  value={newTransaction.splitMethod}
-                  label="Split Method"
-                  onChange={(e) => handleSplitMethodChange(e.target.value as 'amount' | 'percentage')}
-                >
-                  <MenuItem value="amount">Split by Amount</MenuItem>
-                  <MenuItem value="percentage">Split by Percentage</MenuItem>
-                </Select>
-              </FormControl>
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Remaining: {newTransaction.splitMethod === 'amount' 
-                    ? formatCurrency(calculateRemainingAmount())
-                    : `${calculateRemainingPercentage().toFixed(1)}%`}
-                </Typography>
-                {group.members.map((member) => (
-                  <Box key={member.id} sx={{ mb: 1 }}>
-                    <Typography variant="subtitle2">{member.name}</Typography>
-                    <TextField
-                      size="small"
-                      label={newTransaction.splitMethod === 'amount' ? 'Amount' : 'Percentage'}
-                      type="number"
-                      value={newTransaction.splitMethod === 'amount'
-                        ? newTransaction.splits.find(s => s.memberId === member.id)?.amount || 0
-                        : newTransaction.splits.find(s => s.memberId === member.id)?.percentage || 0}
-                      onChange={(e) => newTransaction.splitMethod === 'amount'
-                        ? handleSplitAmountChange(member.id, e.target.value)
-                        : handleSplitPercentageChange(member.id, e.target.value)}
-                      fullWidth
-                    />
-                  </Box>
-                ))}
-              </Box>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setTransactionDialogOpen(false);
-            setEditingTransaction(null);
-          }}>
-            Cancel
-          </Button>
-          <Button onClick={editingTransaction ? handleUpdateTransaction : handleAddTransaction} variant="contained">
-            {editingTransaction ? 'Update' : 'Add'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onSubmit={editingTransaction ? handleUpdateTransaction : handleAddTransaction}
+        group={group}
+        transaction={editingTransaction || undefined}
+      />
 
-      <Dialog 
-        open={paymentDialogOpen} 
+      <PaymentForm
+        open={paymentDialogOpen}
         onClose={() => {
           setPaymentDialogOpen(false);
           setEditingPayment(null);
         }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>{editingPayment ? 'Edit Payment' : 'Record Payment'}</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Amount"
-            type="number"
-            fullWidth
-            value={newPayment.amount}
-            onChange={(e) => setNewPayment(prev => ({ ...prev, amount: e.target.value }))}
-          />
-          <TextField
-            margin="dense"
-            label="Date"
-            type="date"
-            fullWidth
-            value={newPayment.date}
-            onChange={(e) => setNewPayment(prev => ({ ...prev, date: e.target.value }))}
-            InputLabelProps={{ shrink: true }}
-          />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>From</InputLabel>
-            <Select
-              value={newPayment.fromMemberId}
-              label="From"
-              onChange={(e) => setNewPayment(prev => ({ ...prev, fromMemberId: e.target.value }))}
-            >
-              {group.members.map((member) => (
-                <MenuItem key={member.id} value={member.id}>
-                  {member.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="dense">
-            <InputLabel>To</InputLabel>
-            <Select
-              value={newPayment.toMemberId}
-              label="To"
-              onChange={(e) => setNewPayment(prev => ({ ...prev, toMemberId: e.target.value }))}
-            >
-              {group.members
-                .filter(member => member.id !== newPayment.fromMemberId)
-                .map((member) => (
-                  <MenuItem key={member.id} value={member.id}>
-                    {member.name}
-                  </MenuItem>
-                ))}
-            </Select>
-          </FormControl>
-          <TextField
-            margin="dense"
-            label="Notes"
-            fullWidth
-            value={newPayment.notes}
-            onChange={(e) => setNewPayment(prev => ({ ...prev, notes: e.target.value }))}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setPaymentDialogOpen(false);
-            setEditingPayment(null);
-          }}>
-            Cancel
-          </Button>
-          <Button onClick={editingPayment ? handleUpdatePayment : handleAddPayment} variant="contained">
-            {editingPayment ? 'Update' : 'Record'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onSubmit={editingPayment ? handleUpdatePayment : handleAddPayment}
+        group={group}
+        payment={editingPayment || undefined}
+      />
 
       <ConfirmationDialog
         open={deleteDialogOpen}
@@ -809,7 +718,27 @@ const GroupDetails = () => {
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
       />
-    </div>
+
+      <Dialog open={open} onClose={() => setOpen(false)}>
+        <DialogTitle>Add New Member</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Member Name"
+            fullWidth
+            value={newMemberName}
+            onChange={(e) => setNewMemberName(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleAddMember} variant="contained">
+            Add
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
   );
 };
 

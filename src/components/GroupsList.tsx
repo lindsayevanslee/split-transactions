@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Container,
   Typography,
   Button,
   List,
@@ -13,142 +14,126 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Paper,
   Box,
+  CircularProgress,
+  Alert
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useApp } from '../context/AppContext';
-import ConfirmationDialog from './ConfirmationDialog';
+import { useAuth } from '../context/AuthContext';
+import { Group } from '../types';
 
 const GroupsList = () => {
   const navigate = useNavigate();
-  const { groups, addGroup, deleteGroup } = useApp();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const { groups, loading, error, createGroup, deleteGroup } = useApp();
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [groupToDelete, setGroupToDelete] = useState<string | null>(null);
 
-  const handleAddGroup = () => {
-    if (newGroupName.trim()) {
-      addGroup({
-        id: crypto.randomUUID(),
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim()) return;
+    
+    try {
+      await createGroup({
         name: newGroupName.trim(),
         members: [],
         transactions: [],
         payments: [],
-        customCategories: [],
+        customCategories: []
       });
       setNewGroupName('');
-      setDialogOpen(false);
+      setOpen(false);
+    } catch (err) {
+      console.error('Error creating group:', err);
     }
   };
 
-  const handleDeleteClick = (groupId: string) => {
-    setGroupToDelete(groupId);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteConfirm = () => {
-    if (groupToDelete) {
-      deleteGroup(groupToDelete);
-      setDeleteDialogOpen(false);
-      setGroupToDelete(null);
+  const handleDeleteGroup = async (groupId: string) => {
+    try {
+      await deleteGroup(groupId);
+    } catch (err) {
+      console.error('Error deleting group:', err);
     }
   };
 
-  const handleDeleteCancel = () => {
-    setDeleteDialogOpen(false);
-    setGroupToDelete(null);
-  };
+  if (!user) {
+    return (
+      <Container>
+        <Alert severity="info">Please sign in to view your groups.</Alert>
+      </Container>
+    );
+  }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
+  if (loading) {
+    return (
+      <Container sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Container>
+    );
+  }
 
-  const getGroupStats = (group: typeof groups[0]) => {
-    const totalAmount = group.transactions.reduce((sum, t) => sum + t.amount, 0);
-    
-    const dates = group.transactions.map(t => new Date(t.date));
-    const dateRange = dates.length > 0
-      ? `${dates[0].toLocaleDateString()} - ${dates[dates.length - 1].toLocaleDateString()}`
-      : 'No transactions';
-
-    return {
-      totalAmount,
-      dateRange,
-      memberCount: group.members.length,
-      transactionCount: group.transactions.length,
-    };
-  };
+  if (error) {
+    return (
+      <Container>
+        <Alert severity="error">{error}</Alert>
+      </Container>
+    );
+  }
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
+    <Container>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1">
           Your Groups
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setDialogOpen(true)}
-        >
+        <Button variant="contained" onClick={() => setOpen(true)}>
           Create New Group
         </Button>
-      </div>
+      </Box>
 
-      <Paper sx={{ p: 2 }}>
+      {groups.length === 0 ? (
+        <Typography variant="body1" color="text.secondary">
+          No groups yet. Create your first group to get started!
+        </Typography>
+      ) : (
         <List>
-          {groups.map((group) => {
-            const stats = getGroupStats(group);
-            return (
-              <ListItem
-                key={group.id}
-                onClick={() => navigate(`/group/${group.id}`)}
-                sx={{
-                  cursor: 'pointer',
-                  '&:hover': {
-                    backgroundColor: 'action.hover',
-                  },
-                }}
-              >
-                <ListItemText
-                  primary={group.name}
-                  secondary={
-                    <Box component="span">
-                      <Typography component="span" variant="body2" color="textSecondary">
-                        {group.members.length} members • {group.transactions.length} transactions
-                      </Typography>
-                    </Box>
-                  }
-                />
-                <ListItemSecondaryAction>
-                  <IconButton
-                    edge="end"
-                    aria-label="delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(group.id);
-                    }}
-                    color="error"
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </ListItemSecondaryAction>
-              </ListItem>
-            );
-          })}
-          {groups.length === 0 && (
-            <ListItem>
-              <ListItemText primary="No groups yet" />
+          {groups.map((group) => (
+            <ListItem
+              key={group.id}
+              component="div"
+              onClick={() => navigate(`/groups/${group.id}`)}
+              sx={{ 
+                mb: 1, 
+                borderRadius: 1, 
+                bgcolor: 'background.paper',
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: 'action.hover'
+                }
+              }}
+            >
+              <ListItemText
+                primary={group.name}
+                secondary={`${group.members.length} members • ${group.transactions.length} transactions`}
+              />
+              <ListItemSecondaryAction>
+                <IconButton
+                  edge="end"
+                  aria-label="delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteGroup(group.id);
+                  }}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </ListItemSecondaryAction>
             </ListItem>
-          )}
+          ))}
         </List>
-      </Paper>
+      )}
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
+      <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogTitle>Create New Group</DialogTitle>
         <DialogContent>
           <TextField
@@ -161,21 +146,13 @@ const GroupsList = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleAddGroup} variant="contained">
+          <Button onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleCreateGroup} variant="contained">
             Create
           </Button>
         </DialogActions>
       </Dialog>
-
-      <ConfirmationDialog
-        open={deleteDialogOpen}
-        title="Delete Group"
-        message="Are you sure you want to delete this group? This action cannot be undone."
-        onConfirm={handleDeleteConfirm}
-        onCancel={handleDeleteCancel}
-      />
-    </div>
+    </Container>
   );
 };
 

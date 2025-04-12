@@ -5,37 +5,40 @@ export interface Member {
 
 export interface Transaction {
   id: string;
+  description: string;
   amount: number;
   date: Date;
-  category: string;
-  notes: string;
   payerId: string;
-  splits: { memberId: string; amount: number; percentage?: number }[];
+  category: string;
+  split: {
+    [memberId: string]: number;
+  };
 }
 
 export interface Payment {
   id: string;
+  fromId: string;
+  toId: string;
   amount: number;
   date: Date;
-  fromMemberId: string;
-  toMemberId: string;
   notes: string;
 }
 
 export interface Group {
   id: string;
   name: string;
+  userId: string;
   members: Member[];
   transactions: Transaction[];
   payments: Payment[];
-  customCategories: string[];
 }
 
 export const DEFAULT_CATEGORIES = [
-  'Food & Drinks',
+  'Food & Dining',
+  'Shopping',
   'Transportation',
   'Entertainment',
-  'Shopping',
   'Utilities',
-  'Other',
+  'Travel',
+  'Other'
 ]; 

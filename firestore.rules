@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isValidGroup() {
+      let group = request.resource.data;
+      return group.keys().hasAll(['name', 'ownerId', 'members', 'transactions', 'payments', 'customCategories', 'createdAt', 'updatedAt'])
+        && group.name is string
+        && group.ownerId is string
+        && group.members is list
+        && group.transactions is list
+        && group.payments is list
+        && group.customCategories is list
+        && group.createdAt is timestamp
+        && group.updatedAt is timestamp;
+    }
+    
+    function isValidMember(member) {
+      return member.keys().hasAll(['id', 'name'])
+        && member.id is string
+        && member.name is string;
+    }
+    
+    function isValidTransaction(transaction) {
+      return transaction.keys().hasAll(['id', 'date', 'description', 'amount', 'payerId', 'category', 'split'])
+        && transaction.id is string
+        && transaction.date is timestamp
+        && transaction.description is string
+        && transaction.amount is number
+        && transaction.payerId is string
+        && transaction.category is string
+        && transaction.split is map;
+    }
+    
+    function isValidPayment(payment) {
+      return payment.keys().hasAll(['id', 'date', 'amount', 'fromId', 'toId'])
+        && payment.id is string
+        && payment.date is timestamp
+        && payment.amount is number
+        && payment.fromId is string
+        && payment.toId is string;
+    }
+
+    // Groups collection rules
+    match /groups/{groupId} {
+      // Allow read if user is authenticated
+      allow read: if isAuthenticated();
+      
+      // Allow create if user is authenticated and the group is valid
+      allow create: if isAuthenticated() 
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidGroup();
+      
+      // Allow update if user is the owner and the group is valid
+      allow update: if isOwner(resource.data.ownerId)
+        && isValidGroup()
+        && request.resource.data.ownerId == resource.data.ownerId;
+      
+      // Allow delete if user is the owner
+      allow delete: if isOwner(resource.data.ownerId);
+    }
+  }
+} 
