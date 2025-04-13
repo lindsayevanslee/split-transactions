@@ -1,37 +1,37 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { Group } from '../types';
-import {
+import { db } from '../firebase/config';
+import { 
   collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  onSnapshot,
   query,
   where,
-  Timestamp
-} from 'firebase/firestore';
-import { db } from '../firebase/config';
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+  DocumentData,
+  QuerySnapshot,
+  QueryDocumentSnapshot,
+  CollectionReference,
+  DocumentReference,
+  Query
+} from '@firebase/firestore';
 
 interface AppContextType {
   groups: Group[];
   loading: boolean;
   error: string | null;
-  createGroup: (groupData: Omit<Group, 'id'>) => Promise<void>;
-  updateGroup: (id: string, group: Group) => Promise<void>;
-  deleteGroup: (id: string) => Promise<void>;
+  createGroup: (group: Omit<Group, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
+  updateGroup: (groupId: string, group: Partial<Group>) => Promise<void>;
+  deleteGroup: (groupId: string) => Promise<void>;
 }
 
-const AppContext = createContext<AppContextType>({
-  groups: [],
-  loading: false,
-  error: null,
-  createGroup: async () => {},
-  updateGroup: async () => {},
-  deleteGroup: async () => {},
-});
+const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const AppProvider = ({ children }: { children: React.ReactNode }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,37 +44,39 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    const groupsRef = collection(db, 'groups');
-    const q = query(groupsRef, where('userId', '==', user.uid));
+    const groupsRef = collection(db, 'groups') as CollectionReference<DocumentData>;
+    const q = query(groupsRef, where('userId', '==', user.uid)) as Query<DocumentData>;
 
     const unsubscribe = onSnapshot(
       q,
-      (snapshot) => {
+      (snapshot: QuerySnapshot<DocumentData>) => {
         const groupsData: Group[] = [];
-        snapshot.forEach((doc) => {
+        snapshot.forEach((doc: QueryDocumentSnapshot<DocumentData>) => {
           const data = doc.data();
-          groupsData.push({
-            id: doc.id,
-            name: data.name,
-            userId: data.userId,
-            members: data.members || [],
-            transactions: (data.transactions || []).map((t: { date: Timestamp }) => ({
-              ...t,
-              date: t.date.toDate(),
-            })),
-            payments: (data.payments || []).map((p: { date: Timestamp }) => ({
-              ...p,
-              date: p.date.toDate(),
-            })),
-            customCategories: data.customCategories || [],
-            createdAt: data.createdAt?.toDate() || new Date(),
-            updatedAt: data.updatedAt?.toDate() || new Date(),
-          });
+          if (data) {
+            groupsData.push({
+              id: doc.id,
+              name: data.name,
+              userId: data.userId,
+              members: data.members || [],
+              transactions: (data.transactions || []).map((t: { date: { toDate: () => Date } }) => ({
+                ...t,
+                date: t.date.toDate(),
+              })),
+              payments: (data.payments || []).map((p: { date: { toDate: () => Date } }) => ({
+                ...p,
+                date: p.date.toDate(),
+              })),
+              customCategories: data.customCategories || [],
+              createdAt: data.createdAt?.toDate() || new Date(),
+              updatedAt: data.updatedAt?.toDate() || new Date(),
+            });
+          }
         });
         setGroups(groupsData);
         setLoading(false);
       },
-      (err) => {
+      (err: Error) => {
         setError(err.message);
         setLoading(false);
       }
@@ -83,67 +85,51 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     return () => unsubscribe();
   }, [user]);
 
-  const createGroup = async (groupData: Omit<Group, 'id'>) => {
+  const createGroup = async (group: Omit<Group, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user) throw new Error('User must be logged in');
 
     try {
-      const groupRef = doc(collection(db, 'groups'));
-      const newGroup = {
-        ...groupData,
+      const groupsRef = collection(db, 'groups') as CollectionReference<DocumentData>;
+      const docRef = await addDoc(groupsRef, {
+        ...group,
         userId: user.uid,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      };
-      await setDoc(groupRef, newGroup);
-    } catch (error) {
-      console.error('Firestore error:', error);
-      throw new Error('Failed to create group');
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return docRef.id;
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+      throw error;
     }
   };
 
-  const updateGroup = async (id: string, group: Group) => {
+  const updateGroup = async (groupId: string, group: Partial<Group>) => {
     if (!user) throw new Error('User must be logged in');
 
     try {
-      const groupRef = doc(db, 'groups', id);
-      const { id: _, ...groupData } = group;
-      
-      // Convert all dates to Firestore timestamps
-      const firestoreData = {
-        ...groupData,
-        transactions: groupData.transactions.map((t) => ({
-          ...t,
-          date: Timestamp.fromDate(new Date(t.date)),
-          splits: t.splits.map(split => ({
-            ...split,
-            amount: Number(split.amount),
-            percentage: split.percentage ? Number(split.percentage) : undefined
-          }))
-        })),
-        payments: groupData.payments.map((p) => ({
-          ...p,
-          date: Timestamp.fromDate(new Date(p.date)),
-          amount: Number(p.amount)
-        })),
-        updatedAt: Timestamp.now()
-      };
-
-      await setDoc(groupRef, firestoreData, { merge: true });
-    } catch (error) {
-      console.error('Firestore error:', error);
-      throw new Error('Failed to update group');
+      const docRef = doc(db, 'groups', groupId) as DocumentReference<DocumentData>;
+      await updateDoc(docRef, {
+        ...group,
+        updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+      throw error;
     }
   };
 
-  const deleteGroup = async (id: string) => {
+  const deleteGroup = async (groupId: string) => {
     if (!user) throw new Error('User must be logged in');
 
     try {
-      const groupRef = doc(db, 'groups', id);
-      await deleteDoc(groupRef);
-    } catch (error) {
-      console.error('Firestore error:', error);
-      throw new Error('Failed to delete group');
+      const docRef = doc(db, 'groups', groupId) as DocumentReference<DocumentData>;
+      await deleteDoc(docRef);
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+      throw error;
     }
   };
 
@@ -163,4 +149,10 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export const useApp = () => useContext(AppContext); 
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (context === undefined) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
+}; 

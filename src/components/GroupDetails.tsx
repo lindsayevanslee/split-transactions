@@ -188,18 +188,22 @@ const GroupDetails = () => {
   };
 
   const handleAddMember = async () => {
-    if (!newMemberName.trim() || !group) return;
+    if (!group || !newMemberName.trim()) return;
 
     try {
-      const updatedGroup: Group = {
+      const updatedGroup = {
         ...group,
-        members: [...group.members, { id: crypto.randomUUID(), name: newMemberName.trim() }]
+        members: [...group.members, { 
+          id: crypto.randomUUID(), 
+          name: newMemberName.trim(),
+          balance: 0
+        }]
       };
-      await updateGroup(groupId!, updatedGroup);
+      await updateGroup(group.id, updatedGroup);
       setNewMemberName('');
       setOpen(false);
-    } catch (err) {
-      console.error('Error adding member:', err);
+    } catch (error) {
+      console.error('Error adding member:', error);
     }
   };
 

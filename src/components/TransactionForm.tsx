@@ -23,15 +23,13 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
   );
   const [notes, setNotes] = useState(transaction?.notes || '');
 
-  const handleSubmit = () => {
-    if (!isValid) return;
-
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     const transactionSplits = Object.entries(splits).map(([memberId, percentage]) => ({
       memberId,
       amount: (percentage / 100) * parseFloat(amount),
       percentage
     }));
-
     onSubmit({
       description,
       amount: parseFloat(amount),
@@ -40,6 +38,8 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
       splits: transactionSplits,
       notes,
       date: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
     onClose();
   };

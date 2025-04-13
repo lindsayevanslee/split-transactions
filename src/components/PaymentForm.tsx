@@ -6,11 +6,12 @@ import {
   DialogActions,
   TextField,
   Button,
-  Grid,
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  InputAdornment,
+  Stack
 } from '@mui/material';
 import { Group, Payment } from '../types';
 
@@ -42,19 +43,17 @@ const PaymentForm = ({ open, onClose, onSubmit, group, payment }: PaymentFormPro
     }
   }, [payment]);
 
-  const handleSubmit = () => {
-    if (!amount || !fromId || !toId) {
-      return;
-    }
-
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     onSubmit({
       amount: parseFloat(amount),
       fromId,
       toId,
+      notes,
       date: new Date(),
-      notes
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
-
     onClose();
   };
 
@@ -62,59 +61,52 @@ const PaymentForm = ({ open, onClose, onSubmit, group, payment }: PaymentFormPro
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{payment ? 'Edit Payment' : 'Add Payment'}</DialogTitle>
       <DialogContent>
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Amount"
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-              InputProps={{
-                startAdornment: '$'
-              }}
-            />
-          </Grid>
-          <Grid item xs={12}>
-            <FormControl fullWidth required>
-              <InputLabel>From</InputLabel>
-              <Select
-                value={fromId}
-                onChange={(e) => setFromId(e.target.value)}
-                label="From"
-              >
-                {group.members.map((member) => (
-                  <MenuItem key={member.id} value={member.id}>{member.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12}>
-            <FormControl fullWidth required>
-              <InputLabel>To</InputLabel>
-              <Select
-                value={toId}
-                onChange={(e) => setToId(e.target.value)}
-                label="To"
-              >
-                {group.members.map((member) => (
-                  <MenuItem key={member.id} value={member.id}>{member.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Notes"
-              multiline
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </Grid>
-        </Grid>
+        <Stack spacing={2}>
+          <TextField
+            fullWidth
+            label="Amount"
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            InputProps={{
+              startAdornment: <InputAdornment position="start">$</InputAdornment>,
+            }}
+          />
+          <FormControl fullWidth>
+            <InputLabel>From</InputLabel>
+            <Select
+              value={fromId}
+              onChange={(e) => setFromId(e.target.value)}
+            >
+              {group.members.map((member) => (
+                <MenuItem key={member.id} value={member.id}>
+                  {member.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth>
+            <InputLabel>To</InputLabel>
+            <Select
+              value={toId}
+              onChange={(e) => setToId(e.target.value)}
+            >
+              {group.members.map((member) => (
+                <MenuItem key={member.id} value={member.id}>
+                  {member.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            label="Notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            multiline
+            rows={2}
+          />
+        </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>

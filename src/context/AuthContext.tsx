@@ -1,12 +1,10 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
-  getAuth,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  User,
-  AuthError
+  User
 } from 'firebase/auth';
 import { auth } from '../firebase/config';
 
@@ -23,7 +21,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signIn: async () => {},
   signUp: async () => {},
-  signOut: async () => {},
+  signOut: async () => {}
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -40,30 +38,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      console.error('Sign in error:', error);
-      throw error;
-    }
+    await signInWithEmailAndPassword(auth, email, password);
   };
 
   const signUp = async (email: string, password: string) => {
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      console.error('Sign up error:', error);
-      throw error;
-    }
+    await createUserWithEmailAndPassword(auth, email, password);
   };
 
   const signOut = async () => {
-    try {
-      await firebaseSignOut(auth);
-    } catch (error) {
-      console.error('Sign out error:', error);
-      throw error;
-    }
+    await firebaseSignOut(auth);
   };
 
   return (
@@ -73,7 +56,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         loading,
         signIn,
         signUp,
-        signOut,
+        signOut
       }}
     >
       {children}
@@ -81,4 +64,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext); 
+export const useAuth = () => {
+  return useContext(AuthContext);
+}; 

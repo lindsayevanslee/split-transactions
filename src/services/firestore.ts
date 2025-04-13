@@ -3,68 +3,146 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
+  addDoc,
   updateDoc,
   deleteDoc,
   query,
   where,
-  Timestamp
+  Timestamp,
+  DocumentData
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { Group, Transaction, Payment } from '../types';
+import { Group } from '../types';
+
+type FirestoreGroup = Omit<Group, 'id' | 'createdAt' | 'updatedAt'> & {
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  [key: string]: unknown;
+};
+
+function isFirestoreGroup(data: DocumentData): data is FirestoreGroup {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'name' in data &&
+    'userId' in data &&
+    'members' in data &&
+    'transactions' in data &&
+    'payments' in data &&
+    'createdAt' in data &&
+    'updatedAt' in data &&
+    typeof data.createdAt === 'object' &&
+    data.createdAt !== null &&
+    'toDate' in data.createdAt &&
+    typeof data.createdAt.toDate === 'function' &&
+    typeof data.updatedAt === 'object' &&
+    data.updatedAt !== null &&
+    'toDate' in data.updatedAt &&
+    typeof data.updatedAt.toDate === 'function'
+  );
+}
 
 // Groups collection
 export const groupsCollection = collection(db, 'groups');
 
-export const createGroup = async (group: Omit<Group, 'id'>) => {
-  const groupRef = doc(groupsCollection);
-  const newGroup = {
-    ...group,
-    id: groupRef.id,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now()
-  };
-  await setDoc(groupRef, newGroup);
-  return newGroup;
-};
-
-export const getGroup = async (groupId: string) => {
-  const groupRef = doc(groupsCollection, groupId);
-  const groupSnap = await getDoc(groupRef);
-  if (!groupSnap.exists()) {
-    throw new Error('Group not found');
+export const createGroup = async (group: Omit<Group, 'id'>): Promise<string> => {
+  try {
+    const docRef = await addDoc(groupsCollection, {
+      ...group,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating group:', error);
+    throw error;
   }
-  return groupSnap.data() as Group;
 };
 
-export const getUserGroups = async (userId: string) => {
-  const q = query(groupsCollection, where('members', 'array-contains', userId));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => doc.data() as Group);
+export const getGroup = async (groupId: string): Promise<Group | null> => {
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    const groupSnap = await getDoc(groupRef);
+    const data = groupSnap.data();
+    
+    if (!data || !isFirestoreGroup(data)) {
+      return null;
+    }
+
+    return {
+      id: groupId,
+      ...data,
+      createdAt: data.createdAt.toDate(),
+      updatedAt: data.updatedAt.toDate()
+    };
+  } catch (error) {
+    console.error('Error getting group:', error);
+    throw error;
+  }
 };
 
-export const updateGroup = async (groupId: string, group: Partial<Group>) => {
-  const groupRef = doc(groupsCollection, groupId);
-  await updateDoc(groupRef, {
-    ...group,
-    updatedAt: Timestamp.now()
-  });
+export const getUserGroups = async (userId: string): Promise<Group[]> => {
+  try {
+    const q = query(groupsCollection, where('userId', '==', userId));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      if (!isFirestoreGroup(data)) {
+        throw new Error(`Invalid group data for document ${doc.id}`);
+      }
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt.toDate(),
+        updatedAt: data.updatedAt.toDate()
+      };
+    });
+  } catch (error) {
+    console.error('Error getting user groups:', error);
+    throw error;
+  }
 };
 
-export const deleteGroup = async (groupId: string) => {
-  const groupRef = doc(groupsCollection, groupId);
-  await deleteDoc(groupRef);
+export const updateGroup = async (groupId: string, group: Partial<Group>): Promise<void> => {
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    await updateDoc(groupRef, {
+      ...group,
+      updatedAt: new Date()
+    });
+  } catch (error) {
+    console.error('Error updating group:', error);
+    throw error;
+  }
 };
 
-// Helper function to convert Firestore Timestamps to Dates
-export const convertTimestamps = (data: any): any => {
-  if (data === null || data === undefined) return data;
-  if (data instanceof Timestamp) return data.toDate();
-  if (Array.isArray(data)) return data.map(convertTimestamps);
-  if (typeof data === 'object') {
-    return Object.fromEntries(
-      Object.entries(data).map(([key, value]) => [key, convertTimestamps(value)])
-    );
+export const deleteGroup = async (groupId: string): Promise<void> => {
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    await deleteDoc(groupRef);
+  } catch (error) {
+    console.error('Error deleting group:', error);
+    throw error;
+  }
+};
+
+interface FirestoreTimestamp {
+  toDate: () => Date;
+}
+
+type TimestampData = {
+  [key: string]: unknown | FirestoreTimestamp;
+}
+
+export const convertTimestamp = (data: unknown): unknown => {
+  if (data && typeof data === 'object' && 'toDate' in data && typeof data.toDate === 'function') {
+    return (data as FirestoreTimestamp).toDate();
+  }
+  if (data && typeof data === 'object') {
+    return Object.entries(data as TimestampData).reduce((acc, [key, value]) => ({
+      ...acc,
+      [key]: convertTimestamp(value)
+    }), {});
   }
   return data;
 }; 

@@ -1,6 +1,7 @@
 export interface Member {
   id: string;
   name: string;
+  balance: number;
 }
 
 export interface Transaction {
@@ -16,6 +17,8 @@ export interface Transaction {
     amount: number;
     percentage?: number;
   }>;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Payment {
@@ -25,6 +28,8 @@ export interface Payment {
   amount: number;
   date: Date;
   notes: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Group {

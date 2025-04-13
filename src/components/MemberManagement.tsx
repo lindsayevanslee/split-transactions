@@ -34,22 +34,21 @@ const MemberManagement = ({ group, open, onClose, onUpdateGroup, onDeleteMember 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
 
-  const handleAddMember = () => {
-    if (newMemberName.trim()) {
-      const updatedGroup = {
-        ...group,
-        members: [
-          ...group.members,
-          {
-            id: crypto.randomUUID(),
-            name: newMemberName.trim(),
-          },
-        ],
-      };
-      onUpdateGroup(updatedGroup);
-      setNewMemberName('');
-      setError(null);
-    }
+  const handleAddMember = async () => {
+    if (!group || !newMemberName.trim()) return;
+
+    const updatedGroup = {
+      ...group,
+      members: [...group.members, {
+        id: crypto.randomUUID(),
+        name: newMemberName.trim(),
+        balance: 0
+      }]
+    };
+
+    onUpdateGroup(updatedGroup);
+    setNewMemberName('');
+    onClose();
   };
 
   const handleEditMember = (member: Member) => {

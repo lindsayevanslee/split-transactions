@@ -53,7 +53,7 @@ const Login = () => {
       navigate('/groups');
     } catch (err) {
       console.error('Sign in error:', err);
-      if (err instanceof Error) {
+      if (err && typeof err === 'object' && 'code' in err) {
         setError(getErrorMessage(err as AuthError));
       } else {
         setError('An unexpected error occurred. Please try again.');
@@ -73,7 +73,7 @@ const Login = () => {
       navigate('/groups');
     } catch (err) {
       console.error('Sign up error:', err);
-      if (err instanceof Error) {
+      if (err && typeof err === 'object' && 'code' in err) {
         setError(getErrorMessage(err as AuthError));
       } else {
         setError('An unexpected error occurred. Please try again.');

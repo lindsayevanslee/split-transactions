@@ -21,33 +21,36 @@ import {
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Group } from '../types';
 
 const GroupsList = () => {
-  const navigate = useNavigate();
   const { groups, loading, error, createGroup, deleteGroup } = useApp();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+  const navigate = useNavigate();
 
   const handleCreateGroup = async () => {
-    if (!newGroupName.trim()) return;
+    if (!user) return;
     
     try {
-      await createGroup({
-        name: newGroupName.trim(),
-        userId: user?.uid || '',
-        members: [],
+      const groupId = await createGroup({
+        name: newGroupName,
+        userId: user.uid,
+        members: [{
+          id: user.uid,
+          name: user.displayName || 'Anonymous',
+          balance: 0
+        }],
         transactions: [],
         payments: [],
-        customCategories: [],
-        createdAt: new Date(),
-        updatedAt: new Date()
+        customCategories: []
       });
+      
       setNewGroupName('');
       setOpen(false);
-    } catch (err) {
-      console.error('Error creating group:', err);
+      navigate(`/groups/${groupId}`);
+    } catch (error) {
+      console.error('Error creating group:', error);
     }
   };
 
