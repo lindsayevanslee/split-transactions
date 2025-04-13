@@ -7,15 +7,21 @@ interface TransactionFormProps {
   onClose: () => void;
   onSubmit: (transaction: Omit<Transaction, 'id'>) => void;
   group: Group;
+  transaction?: Transaction;
 }
 
-const TransactionForm = ({ open, onClose, onSubmit, group }: TransactionFormProps) => {
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('');
-  const [payerId, setPayerId] = useState('');
-  const [splits, setSplits] = useState<Record<string, number>>({});
-  const [notes, setNotes] = useState('');
+const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: TransactionFormProps) => {
+  const [description, setDescription] = useState(transaction?.description || '');
+  const [amount, setAmount] = useState(transaction?.amount.toString() || '');
+  const [category, setCategory] = useState(transaction?.category || '');
+  const [payerId, setPayerId] = useState(transaction?.payerId || '');
+  const [splits, setSplits] = useState<Record<string, number>>(
+    transaction?.splits.reduce((acc, split) => ({
+      ...acc,
+      [split.memberId]: split.percentage
+    }), {}) || {}
+  );
+  const [notes, setNotes] = useState(transaction?.notes || '');
 
   const handleSubmit = () => {
     if (!isValid) return;

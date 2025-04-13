@@ -25,8 +25,7 @@ import {
   CircularProgress,
   Alert,
   Tabs,
-  Tab,
-  Grid
+  Tab
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
@@ -70,7 +69,7 @@ const GroupDetails = () => {
   const { user } = useAuth();
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | undefined>(undefined);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'transaction' | 'member'; id: string } | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -91,36 +90,15 @@ const GroupDetails = () => {
     }
   }, [groupId, groups, navigate]);
 
-  const handleDeleteClick = (type: 'transaction' | 'member', id: string) => {
-    setItemToDelete({ type, id });
-    setDeleteDialogOpen(true);
-  };
-
   const handleDeleteConfirm = () => {
-    if (!itemToDelete || !group) return;
+    if (!group || !groupId) return;
 
-    const updatedGroup = { ...group };
-    
-    if (itemToDelete.type === 'transaction') {
-      updatedGroup.transactions = group.transactions.filter(t => t.id !== itemToDelete.id);
-    } else {
-      // Check if member is involved in any transactions
-      const isPayer = group.transactions.some(t => t.payerId === itemToDelete.id);
-      const isInvolvedInSplits = group.transactions.some(t => 
-        t.splits.some(s => s.memberId === itemToDelete.id)
-      );
-
-      if (isPayer || isInvolvedInSplits) {
-        // Show error in member management dialog
-        return;
-      }
-
-      updatedGroup.members = group.members.filter(m => m.id !== itemToDelete.id);
-    }
-
-    if (groupId) {
-      updateGroup(groupId, updatedGroup);
-    }
+    const updatedGroup: Group = {
+      ...group,
+      transactions: group.transactions.filter(t => t.id !== itemToDelete?.id),
+      updatedAt: new Date(),
+    };
+    updateGroup(groupId, updatedGroup);
     setDeleteDialogOpen(false);
     setItemToDelete(null);
   };
@@ -141,11 +119,6 @@ const GroupDetails = () => {
               ...transaction,
               id: editingTransaction.id,
               date: new Date(transaction.date),
-              splits: transaction.splits.map(split => ({
-                memberId: split.memberId,
-                amount: split.amount,
-                percentage: split.percentage
-              }))
             }
           : t
       ),
@@ -153,33 +126,22 @@ const GroupDetails = () => {
     };
     updateGroup(groupId, updatedGroup);
     setTransactionDialogOpen(false);
-    setEditingTransaction(null);
+    setEditingTransaction(undefined);
   };
 
   const handleAddTransaction = (transaction: Omit<Transaction, 'id'>) => {
     if (!group || !groupId) return;
 
     const updatedGroup: Group = {
-      id: group.id,
-      name: group.name,
-      userId: group.userId,
-      members: group.members,
+      ...group,
       transactions: [
         ...group.transactions,
         {
           ...transaction,
           id: crypto.randomUUID(),
           date: new Date(transaction.date),
-          splits: transaction.splits.map(split => ({
-            memberId: split.memberId,
-            amount: split.amount,
-            percentage: split.percentage
-          }))
         },
       ],
-      payments: group.payments,
-      customCategories: group.customCategories,
-      createdAt: group.createdAt,
       updatedAt: new Date(),
     };
     updateGroup(groupId, updatedGroup);
@@ -204,9 +166,8 @@ const GroupDetails = () => {
           ...payment,
           id: crypto.randomUUID(),
           date: new Date(payment.date),
-          amount: payment.amount,
           fromId: payment.fromId,
-          toId: payment.toId
+          toId: payment.toId,
         },
       ],
       updatedAt: new Date(),
@@ -215,46 +176,15 @@ const GroupDetails = () => {
     setPaymentDialogOpen(false);
   };
 
-  const handleDeletePayment = (paymentId: string) => {
+  const handleDeletePayment = async (paymentId: string) => {
     if (!group || !groupId) return;
     
     const updatedGroup = {
       ...group,
-      payments: group.payments.filter(p => p.id !== paymentId),
+      payments: group.payments.filter(p => p.id !== paymentId)
     };
-    updateGroup(groupId, updatedGroup);
-  };
-
-  const handleEditPayment = (payment: Payment) => {
-    setEditingPayment(payment);
-    setPaymentDialogOpen(true);
-  };
-
-  const handleUpdatePayment = (payment: Omit<Payment, 'id'>) => {
-    if (!group || !groupId || !editingPayment) return;
-
-    const updatedGroup: Group = {
-      id: group.id,
-      name: group.name,
-      userId: group.userId,
-      members: group.members,
-      transactions: group.transactions,
-      payments: group.payments.map(p =>
-        p.id === editingPayment.id
-          ? {
-              ...payment,
-              id: editingPayment.id,
-              date: new Date(payment.date),
-            }
-          : p
-      ),
-      customCategories: group.customCategories,
-      createdAt: group.createdAt,
-      updatedAt: new Date(),
-    };
-    updateGroup(groupId, updatedGroup);
-    setPaymentDialogOpen(false);
-    setEditingPayment(null);
+    
+    await updateGroup(groupId, updatedGroup);
   };
 
   const handleAddMember = async () => {
@@ -285,6 +215,33 @@ const GroupDetails = () => {
     } catch (err) {
       console.error('Error deleting member:', err);
     }
+  };
+
+  const handleUpdatePayment = (payment: Omit<Payment, 'id'>) => {
+    if (!group || !groupId || !editingPayment) return;
+
+    const updatedGroup: Group = {
+      id: group.id,
+      name: group.name,
+      userId: group.userId,
+      members: group.members,
+      transactions: group.transactions,
+      payments: group.payments.map(p =>
+        p.id === editingPayment.id
+          ? {
+              ...payment,
+              id: editingPayment.id,
+              date: new Date(payment.date),
+            }
+          : p
+      ),
+      customCategories: group.customCategories,
+      createdAt: group.createdAt,
+      updatedAt: new Date(),
+    };
+    updateGroup(groupId, updatedGroup);
+    setPaymentDialogOpen(false);
+    setEditingPayment(null);
   };
 
   if (!user) {
@@ -340,8 +297,8 @@ const GroupDetails = () => {
       </Box>
 
       <TabPanel value={tabValue} index={0}>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+          <Box>
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom>
                 Members
@@ -366,12 +323,12 @@ const GroupDetails = () => {
                 ))}
               </List>
             </Box>
-          </Grid>
+          </Box>
 
-          <Grid item xs={12} md={6}>
+          <Box>
             <TransactionSummary group={group} />
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
@@ -385,27 +342,19 @@ const GroupDetails = () => {
           </Button>
         </Box>
 
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Date</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell>Amount</TableCell>
-                <TableCell>Paid by</TableCell>
-                <TableCell>Category</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {group.transactions.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                  <TableCell>{transaction.description}</TableCell>
-                  <TableCell>{formatCurrency(transaction.amount)}</TableCell>
-                  <TableCell>{getMemberName(transaction.payerId)}</TableCell>
-                  <TableCell>{transaction.category}</TableCell>
-                  <TableCell>
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="h6">Transactions</Typography>
+          <Box sx={{ display: 'grid', gap: 2 }}>
+            {group.transactions.map((transaction) => (
+              <Paper key={transaction.id} sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Box>
+                    <Typography variant="subtitle1">{transaction.description}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {new Date(transaction.date).toLocaleDateString()} - {formatCurrency(transaction.amount)}
+                    </Typography>
+                  </Box>
+                  <Box>
                     <IconButton
                       size="small"
                       onClick={() => {
@@ -417,16 +366,19 @@ const GroupDetails = () => {
                     </IconButton>
                     <IconButton
                       size="small"
-                      onClick={() => handleDeleteClick('transaction', transaction.id)}
+                      onClick={() => {
+                        setItemToDelete({ type: 'transaction', id: transaction.id });
+                        setDeleteDialogOpen(true);
+                      }}
                     >
                       <DeleteIcon />
                     </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                  </Box>
+                </Box>
+              </Paper>
+            ))}
+          </Box>
+        </Box>
       </TabPanel>
 
       <TabPanel value={tabValue} index={2}>
@@ -508,11 +460,11 @@ const GroupDetails = () => {
         open={transactionDialogOpen}
         onClose={() => {
           setTransactionDialogOpen(false);
-          setEditingTransaction(null);
+          setEditingTransaction(undefined);
         }}
         onSubmit={editingTransaction ? handleUpdateTransaction : handleAddTransaction}
         group={group}
-        transaction={editingTransaction || undefined}
+        transaction={editingTransaction}
       />
 
       <PaymentForm
