@@ -10,10 +10,6 @@ import {
   DialogActions,
   TextField,
   Paper,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Box,
   Table,
   TableBody,
@@ -21,7 +17,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
   Container,
   List,
   ListItem,
@@ -30,15 +25,14 @@ import {
   CircularProgress,
   Alert,
   Tabs,
-  Tab
+  Tab,
+  Grid
 } from '@mui/material';
-import Grid from '@mui/material/Grid';
-import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon, ArrowBack as ArrowBackIcon, Delete as DeleteIcon, Payment as PaymentIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { DEFAULT_CATEGORIES, Transaction, Payment, Group, Member } from '../types';
+import { Transaction, Payment, Group, Member } from '../types';
 import TransactionSummary from './TransactionSummary';
-import MemberManagement from './MemberManagement';
 import ConfirmationDialog from './ConfirmationDialog';
 import TransactionForm from './TransactionForm';
 import PaymentForm from './PaymentForm';
@@ -79,25 +73,8 @@ const GroupDetails = () => {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'transaction' | 'member'; id: string } | null>(null);
-  const [newTransaction, setNewTransaction] = useState({
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-    category: '',
-    notes: '',
-    payerId: '',
-    splitType: 'even' as 'even' | 'custom',
-    splitMethod: 'amount' as 'amount' | 'percentage',
-    splits: [] as { memberId: string; amount: number; percentage?: number }[],
-  });
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
-  const [newPayment, setNewPayment] = useState({
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-    fromMemberId: '',
-    toMemberId: '',
-    notes: '',
-  });
   const [group, setGroup] = useState<Group | null>(null);
   const [newMemberName, setNewMemberName] = useState('');
   const [open, setOpen] = useState(false);
@@ -120,7 +97,7 @@ const GroupDetails = () => {
   };
 
   const handleDeleteConfirm = () => {
-    if (!itemToDelete) return;
+    if (!itemToDelete || !group) return;
 
     const updatedGroup = { ...group };
     
@@ -141,7 +118,9 @@ const GroupDetails = () => {
       updatedGroup.members = group.members.filter(m => m.id !== itemToDelete.id);
     }
 
-    updateGroup(groupId!, updatedGroup);
+    if (groupId) {
+      updateGroup(groupId, updatedGroup);
+    }
     setDeleteDialogOpen(false);
     setItemToDelete(null);
   };
@@ -151,32 +130,11 @@ const GroupDetails = () => {
     setItemToDelete(null);
   };
 
-  const handleEditTransaction = (transaction: Transaction) => {
-    setEditingTransaction(transaction);
-    setNewTransaction({
-      amount: transaction.amount.toString(),
-      date: new Date(transaction.date).toISOString().split('T')[0],
-      category: transaction.category,
-      notes: transaction.notes,
-      payerId: transaction.payerId,
-      splitType: transaction.splits.length === group.members.length && 
-                transaction.splits.every(split => split.amount === transaction.amount / group.members.length)
-        ? 'even'
-        : 'custom',
-      splitMethod: 'amount',
-      splits: transaction.splits,
-    });
-    setTransactionDialogOpen(true);
-  };
-
   const handleUpdateTransaction = (transaction: Omit<Transaction, 'id'>) => {
     if (!group || !groupId || !editingTransaction) return;
 
     const updatedGroup: Group = {
-      id: group.id,
-      name: group.name,
-      userId: group.userId,
-      members: group.members,
+      ...group,
       transactions: group.transactions.map(t =>
         t.id === editingTransaction.id
           ? {
@@ -191,9 +149,6 @@ const GroupDetails = () => {
             }
           : t
       ),
-      payments: group.payments,
-      customCategories: group.customCategories,
-      createdAt: group.createdAt,
       updatedAt: new Date(),
     };
     updateGroup(groupId, updatedGroup);
@@ -231,73 +186,6 @@ const GroupDetails = () => {
     setTransactionDialogOpen(false);
   };
 
-  const handleSplitTypeChange = (type: 'even' | 'custom') => {
-    setNewTransaction(prev => ({
-      ...prev,
-      splitType: type,
-      splits: type === 'even' ? [] : group.members.map(member => ({
-        memberId: member.id,
-        amount: 0,
-      })),
-    }));
-  };
-
-  const handleSplitMethodChange = (method: 'amount' | 'percentage') => {
-    setNewTransaction(prev => ({
-      ...prev,
-      splitMethod: method,
-      splits: group.members.map(member => ({
-        memberId: member.id,
-        amount: 0,
-        percentage: method === 'percentage' ? 0 : undefined,
-      })),
-    }));
-  };
-
-  const handleSplitAmountChange = (memberId: string, amount: string) => {
-    const totalAmount = parseFloat(newTransaction.amount) || 0;
-    const newAmount = parseFloat(amount) || 0;
-    const currentTotal = newTransaction.splits.reduce((sum, split) => sum + (split.amount || 0), 0);
-    const otherSplits = newTransaction.splits.filter(split => split.memberId !== memberId);
-    const otherTotal = otherSplits.reduce((sum, split) => sum + (split.amount || 0), 0);
-
-    // If the new amount would exceed the total, cap it at the remaining amount
-    const finalAmount = Math.min(newAmount, totalAmount - otherTotal);
-
-    setNewTransaction(prev => ({
-      ...prev,
-      splits: prev.splits.map(split =>
-        split.memberId === memberId
-          ? { ...split, amount: finalAmount }
-          : split
-      ),
-    }));
-  };
-
-  const handleSplitPercentageChange = (memberId: string, percentage: string) => {
-    const newPercentage = parseFloat(percentage) || 0;
-    const totalAmount = parseFloat(newTransaction.amount) || 0;
-    const currentTotal = newTransaction.splits.reduce((sum, split) => sum + (split.percentage || 0), 0);
-    const otherSplits = newTransaction.splits.filter(split => split.memberId !== memberId);
-    const otherTotal = otherSplits.reduce((sum, split) => sum + (split.percentage || 0), 0);
-
-    // If the new percentage would exceed 100%, cap it at the remaining percentage
-    const finalPercentage = Math.min(newPercentage, 100 - otherTotal);
-
-    setNewTransaction(prev => ({
-      ...prev,
-      splits: prev.splits.map(split =>
-        split.memberId === memberId
-          ? { 
-              ...split, 
-              percentage: finalPercentage,
-              amount: (finalPercentage / 100) * totalAmount
-            }
-          : split
-      ),
-    }));
-  };
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -305,36 +193,22 @@ const GroupDetails = () => {
     }).format(amount);
   };
 
-  const calculateRemainingAmount = () => {
-    const totalAmount = parseFloat(newTransaction.amount) || 0;
-    const currentTotal = newTransaction.splits.reduce((sum, split) => sum + (split.amount || 0), 0);
-    return totalAmount - currentTotal;
-  };
-
-  const calculateRemainingPercentage = () => {
-    const currentTotal = newTransaction.splits.reduce((sum, split) => sum + (split.percentage || 0), 0);
-    return 100 - currentTotal;
-  };
-
   const handleAddPayment = (payment: Omit<Payment, 'id'>) => {
     if (!group || !groupId) return;
 
     const updatedGroup: Group = {
-      id: group.id,
-      name: group.name,
-      userId: group.userId,
-      members: group.members,
-      transactions: group.transactions,
+      ...group,
       payments: [
         ...group.payments,
         {
           ...payment,
           id: crypto.randomUUID(),
           date: new Date(payment.date),
+          amount: payment.amount,
+          fromId: payment.fromId,
+          toId: payment.toId
         },
       ],
-      customCategories: group.customCategories,
-      createdAt: group.createdAt,
       updatedAt: new Date(),
     };
     updateGroup(groupId, updatedGroup);
@@ -342,22 +216,17 @@ const GroupDetails = () => {
   };
 
   const handleDeletePayment = (paymentId: string) => {
+    if (!group || !groupId) return;
+    
     const updatedGroup = {
       ...group,
       payments: group.payments.filter(p => p.id !== paymentId),
     };
-    updateGroup(groupId!, updatedGroup);
+    updateGroup(groupId, updatedGroup);
   };
 
   const handleEditPayment = (payment: Payment) => {
     setEditingPayment(payment);
-    setNewPayment({
-      amount: payment.amount.toString(),
-      date: new Date(payment.date).toISOString().split('T')[0],
-      fromMemberId: payment.fromMemberId,
-      toMemberId: payment.toMemberId,
-      notes: payment.notes,
-    });
     setPaymentDialogOpen(true);
   };
 
