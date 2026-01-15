@@ -9,21 +9,63 @@ service cloud.firestore {
 
     // Helper function to check if user is the owner of a group
     function isGroupOwner(groupId) {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
              get(/databases/$(database)/documents/groups/$(groupId)).data.userId == request.auth.uid;
+    }
+
+    // Helper function to check if user is a member of a group
+    function isGroupMember(groupId) {
+      return isAuthenticated() &&
+             request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberUserIds;
     }
 
     // Groups collection rules
     match /groups/{groupId} {
-      // Allow read if user is authenticated
-      allow read: if isAuthenticated();
-      
-      // Allow create if user is authenticated and sets themselves as owner
-      allow create: if isAuthenticated() && 
-                   request.resource.data.userId == request.auth.uid;
-      
-      // Allow update/delete if user is the owner
-      allow update, delete: if isGroupOwner(groupId);
+      // Members can read. Also allow single-doc get for authenticated users (needed for invitation acceptance)
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() &&
+                  request.auth.uid in resource.data.memberUserIds;
+
+      // Allow create if user is authenticated, sets themselves as owner, and includes themselves in memberUserIds
+      allow create: if isAuthenticated() &&
+                   request.resource.data.userId == request.auth.uid &&
+                   request.auth.uid in request.resource.data.memberUserIds;
+
+      // Owner can do anything; members can only modify transactions/payments (not ownership/members)
+      // Also allow: user accepting invitation (adding themselves to memberUserIds)
+      allow update: if isAuthenticated() &&
+                   (resource.data.userId == request.auth.uid ||
+                   (request.auth.uid in resource.data.memberUserIds &&
+                    request.resource.data.userId == resource.data.userId &&
+                    request.resource.data.memberUserIds == resource.data.memberUserIds &&
+                    request.resource.data.members == resource.data.members) ||
+                   // Allow invitation acceptance: user adds themselves to memberUserIds
+                   (!(request.auth.uid in resource.data.memberUserIds) &&
+                    request.auth.uid in request.resource.data.memberUserIds &&
+                    request.resource.data.userId == resource.data.userId));
+
+      // Only owner can delete
+      allow delete: if isAuthenticated() &&
+                   resource.data.userId == request.auth.uid;
+    }
+
+    // Invitations collection rules
+    match /invitations/{invitationId} {
+      // Anyone can read invitations (token provides security for invite links)
+      allow read: if true;
+
+      // Only group owner can create invitations
+      allow create: if isAuthenticated() &&
+                   isGroupOwner(request.resource.data.groupId);
+
+      // Owner can cancel; anyone can update status to accepted (verified in app logic)
+      allow update: if isAuthenticated() &&
+                   (resource.data.invitedBy == request.auth.uid ||
+                    resource.data.status == 'pending');
+
+      // Only the owner who created it can delete
+      allow delete: if isAuthenticated() &&
+                   resource.data.invitedBy == request.auth.uid;
     }
   }
-} 
+}

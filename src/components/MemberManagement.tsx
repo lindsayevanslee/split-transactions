@@ -37,13 +37,16 @@ const MemberManagement = ({ group, open, onClose, onUpdateGroup, onDeleteMember 
   const handleAddMember = async () => {
     if (!group || !newMemberName.trim()) return;
 
-    const updatedGroup = {
+    const newMember: Member = {
+      id: crypto.randomUUID(),
+      name: newMemberName.trim(),
+      balance: 0,
+      status: 'placeholder',
+    };
+
+    const updatedGroup: Group = {
       ...group,
-      members: [...group.members, {
-        id: crypto.randomUUID(),
-        name: newMemberName.trim(),
-        balance: 0
-      }]
+      members: [...group.members, newMember]
     };
 
     onUpdateGroup(updatedGroup);

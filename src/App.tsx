@@ -8,6 +8,7 @@ import GroupDetails from './components/GroupDetails';
 import Login from './components/Login';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
+import AcceptInvitation from './components/AcceptInvitation';
 
 const App = () => {
   return (
@@ -19,6 +20,7 @@ const App = () => {
             <Layout>
               <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/accept-invite" element={<AcceptInvitation />} />
                 <Route
                   path="/groups"
                   element={

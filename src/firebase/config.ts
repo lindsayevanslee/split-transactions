@@ -13,15 +13,6 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Log the environment variables (without exposing sensitive values)
-console.log('Firebase config:', {
-  ...firebaseConfig,
-  apiKey: firebaseConfig.apiKey ? '***' : 'missing',
-  authDomain: firebaseConfig.authDomain || 'missing',
-  projectId: firebaseConfig.projectId || 'missing',
-  measurementId: firebaseConfig.measurementId || 'missing'
-});
-
 // Validate Firebase configuration
 const requiredEnvVars = [
   'VITE_FIREBASE_API_KEY',
@@ -46,7 +37,6 @@ if (missingEnvVars.length > 0) {
 let app;
 try {
   app = initializeApp(firebaseConfig);
-  console.log('Firebase initialized successfully');
 } catch (error) {
   console.error('Error initializing Firebase:', error);
   throw error;

@@ -7,7 +7,12 @@ import {
   TextField,
   Button,
   Box,
-  Alert
+  Alert,
+  Link,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { AuthError } from 'firebase/auth';
@@ -15,14 +20,16 @@ import { AuthError } from 'firebase/auth';
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signUp } = useAuth();
-
-  console.log('Login component rendered');
-  console.log('Current path:', location.pathname);
+  const { signIn, signUp, resetPassword } = useAuth();
 
   const getErrorMessage = (error: AuthError): string => {
     switch (error.code) {
@@ -38,6 +45,10 @@ const Login = () => {
         return 'No account found with this email.';
       case 'auth/wrong-password':
         return 'Incorrect password.';
+      case 'auth/invalid-credential':
+        return 'Invalid email or password.';
+      case 'auth/too-many-requests':
+        return 'Too many failed attempts. Please try again later.';
       default:
         return error.message || 'An error occurred. Please try again.';
     }
@@ -46,6 +57,7 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setIsLoading(true);
 
     try {
@@ -66,10 +78,11 @@ const Login = () => {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setIsLoading(true);
 
     try {
-      await signUp(email, password);
+      await signUp(email, password, displayName.trim() || undefined);
       navigate('/groups');
     } catch (err) {
       console.error('Sign up error:', err);
@@ -77,6 +90,41 @@ const Login = () => {
         setError(getErrorMessage(err as AuthError));
       } else {
         setError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = () => {
+    setResetEmail(email); // Pre-fill with email from login form
+    setResetDialogOpen(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetEmail.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      await resetPassword(resetEmail);
+      setResetDialogOpen(false);
+      setSuccess('Password reset email sent! Check your inbox (and spam folder).');
+    } catch (err) {
+      console.error('Reset password error:', err);
+      if (err && typeof err === 'object' && 'code' in err) {
+        const authError = err as AuthError;
+        if (authError.code === 'auth/user-not-found') {
+          setError('No account found with this email address.');
+        } else {
+          setError(getErrorMessage(authError));
+        }
+      } else {
+        setError('Failed to send reset email. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -104,14 +152,33 @@ const Login = () => {
           }}
         >
           <Typography component="h1" variant="h5">
-            Sign in to Split Transactions
+            {isSignUp ? 'Create an Account' : 'Sign in to Split Transactions'}
           </Typography>
           {error && (
             <Alert severity="error" sx={{ mt: 2, width: '100%' }}>
               {error}
             </Alert>
           )}
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
+          {success && (
+            <Alert severity="success" sx={{ mt: 2, width: '100%' }}>
+              {success}
+            </Alert>
+          )}
+          <Box component="form" onSubmit={isSignUp ? handleSignUp : handleSubmit} sx={{ mt: 1, width: '100%' }}>
+            {isSignUp && (
+              <TextField
+                margin="normal"
+                fullWidth
+                id="displayName"
+                label="Display Name"
+                name="displayName"
+                autoComplete="name"
+                autoFocus
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                helperText="This is how you'll appear to other group members"
+              />
+            )}
             <TextField
               margin="normal"
               required
@@ -120,7 +187,7 @@ const Login = () => {
               label="Email Address"
               name="email"
               autoComplete="email"
-              autoFocus
+              autoFocus={!isSignUp}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -132,32 +199,76 @@ const Login = () => {
               label="Password"
               type="password"
               id="password"
-              autoComplete="current-password"
+              autoComplete={isSignUp ? 'new-password' : 'current-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            {!isSignUp && (
+              <Box sx={{ textAlign: 'right', mt: 1 }}>
+                <Link
+                  component="button"
+                  type="button"
+                  variant="body2"
+                  onClick={handleForgotPassword}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  Forgot password?
+                </Link>
+              </Box>
+            )}
             <Button
               type="submit"
               fullWidth
               variant="contained"
-              sx={{ mt: 3, mb: 2 }}
+              sx={{ mt: 2, mb: 2 }}
               disabled={isLoading}
             >
-              Sign In
+              {isSignUp ? 'Create Account' : 'Sign In'}
             </Button>
             <Button
               fullWidth
               variant="outlined"
-              onClick={handleSignUp}
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setError('');
+                setSuccess('');
+              }}
               disabled={isLoading}
             >
-              Sign Up
+              {isSignUp ? 'Already have an account? Sign In' : 'Create an Account'}
             </Button>
           </Box>
         </Paper>
       </Box>
+
+      <Dialog open={resetDialogOpen} onClose={() => setResetDialogOpen(false)}>
+        <DialogTitle>Reset Password</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Enter your email address and we'll send you a link to reset your password.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Email Address"
+            type="email"
+            value={resetEmail}
+            onChange={(e) => setResetEmail(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResetDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleResetPassword}
+            variant="contained"
+            disabled={isLoading || !resetEmail.trim()}
+          >
+            Send Reset Email
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
 
-export default Login; 
+export default Login;

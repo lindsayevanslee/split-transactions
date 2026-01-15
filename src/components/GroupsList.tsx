@@ -16,14 +16,15 @@ import {
   TextField,
   Box,
   CircularProgress,
-  Alert
+  Alert,
+  Chip
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 
 const GroupsList = () => {
-  const { groups, loading, error, createGroup, deleteGroup } = useApp();
+  const { groups, loading, error, createGroup, deleteGroup, isGroupOwner } = useApp();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -31,21 +32,25 @@ const GroupsList = () => {
 
   const handleCreateGroup = async () => {
     if (!user) return;
-    
+
     try {
       const groupId = await createGroup({
         name: newGroupName,
         userId: user.uid,
         members: [{
           id: user.uid,
-          name: user.displayName || 'Anonymous',
-          balance: 0
+          name: user.displayName || user.email || 'Me',
+          balance: 0,
+          userId: user.uid,
+          email: user.email || undefined,
+          status: 'active',
+          joinedAt: new Date(),
         }],
         transactions: [],
         payments: [],
         customCategories: []
       });
-      
+
       setNewGroupName('');
       setOpen(false);
       navigate(`/groups/${groupId}`);
@@ -103,39 +108,53 @@ const GroupsList = () => {
         </Typography>
       ) : (
         <List>
-          {groups.map((group) => (
-            <ListItem
-              key={group.id}
-              component="div"
-              onClick={() => navigate(`/groups/${group.id}`)}
-              sx={{ 
-                mb: 1, 
-                borderRadius: 1, 
-                bgcolor: 'background.paper',
-                cursor: 'pointer',
-                '&:hover': {
-                  bgcolor: 'action.hover'
-                }
-              }}
-            >
-              <ListItemText
-                primary={group.name}
-                secondary={`${group.members.length} members • ${group.transactions.length} transactions`}
-              />
-              <ListItemSecondaryAction>
-                <IconButton
-                  edge="end"
-                  aria-label="delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteGroup(group.id);
-                  }}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          ))}
+          {groups.map((group) => {
+            const isOwner = isGroupOwner(group.id);
+            return (
+              <ListItem
+                key={group.id}
+                component="div"
+                onClick={() => navigate(`/groups/${group.id}`)}
+                sx={{
+                  mb: 1,
+                  borderRadius: 1,
+                  bgcolor: 'background.paper',
+                  cursor: 'pointer',
+                  '&:hover': {
+                    bgcolor: 'action.hover'
+                  }
+                }}
+              >
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {group.name}
+                      {isOwner ? (
+                        <Chip label="Owner" size="small" color="primary" variant="outlined" />
+                      ) : (
+                        <Chip label="Member" size="small" variant="outlined" />
+                      )}
+                    </Box>
+                  }
+                  secondary={`${group.members.length} members • ${group.transactions.length} transactions`}
+                />
+                {isOwner && (
+                  <ListItemSecondaryAction>
+                    <IconButton
+                      edge="end"
+                      aria-label="delete"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteGroup(group.id);
+                      }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </ListItemSecondaryAction>
+                )}
+              </ListItem>
+            );
+          })}
         </List>
       )}
 
@@ -153,7 +172,7 @@ const GroupsList = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreateGroup} variant="contained">
+          <Button onClick={handleCreateGroup} variant="contained" disabled={!newGroupName.trim()}>
             Create
           </Button>
         </DialogActions>
@@ -162,4 +181,4 @@ const GroupsList = () => {
   );
 };
 
-export default GroupsList; 
+export default GroupsList;

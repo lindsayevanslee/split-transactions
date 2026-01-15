@@ -1,6 +1,8 @@
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Typography, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
-import { useState } from 'react';
-import { Group, Transaction } from '../types';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { Group, Transaction, SplitType } from '../types';
+import { SplitTypeSelector } from './SplitTypeSelector';
+import { SplitInput, calculateSplits, validateSplits, getDefaultSplitInputs } from '../utils/splitCalculator';
 
 interface TransactionFormProps {
   open: boolean;
@@ -15,57 +17,118 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
   const [amount, setAmount] = useState(transaction?.amount.toString() || '');
   const [category, setCategory] = useState(transaction?.category || '');
   const [payerId, setPayerId] = useState(transaction?.payerId || '');
-  const [splits, setSplits] = useState<Record<string, number>>(
-    transaction?.splits.reduce((acc, split) => ({
-      ...acc,
-      [split.memberId]: split.percentage
-    }), {}) || {}
-  );
   const [notes, setNotes] = useState(transaction?.notes || '');
+  const [splitType, setSplitType] = useState<SplitType>(transaction?.splitType || 'equal');
+  const [splitInputs, setSplitInputs] = useState<SplitInput[]>([]);
+
+  // Initialize all form fields when dialog opens
+  useEffect(() => {
+    if (open) {
+      if (transaction) {
+        // Edit mode: populate form with transaction data
+        setDescription(transaction.description);
+        setAmount(transaction.amount.toString());
+        setCategory(transaction.category);
+        setPayerId(transaction.payerId);
+        setNotes(transaction.notes || '');
+        setSplitType(transaction.splitType);
+
+        // Reconstruct split inputs from existing splits
+        const inputs: SplitInput[] = group.members.map(member => {
+          const existingSplit = transaction.splits.find(s => s.memberId === member.id);
+          if (transaction.splitType === 'equal') {
+            return {
+              memberId: member.id,
+              value: 0,
+              included: existingSplit ? existingSplit.amount > 0 : true,
+            };
+          } else if (transaction.splitType === 'percentage') {
+            return {
+              memberId: member.id,
+              value: existingSplit?.percentage || 0,
+            };
+          } else if (transaction.splitType === 'shares') {
+            return {
+              memberId: member.id,
+              value: existingSplit?.shares ?? 1,
+            };
+          } else {
+            // exact
+            return {
+              memberId: member.id,
+              value: existingSplit?.amount || 0,
+            };
+          }
+        });
+        setSplitInputs(inputs);
+      } else {
+        // New transaction: reset form to defaults
+        setDescription('');
+        setAmount('');
+        setCategory('');
+        setPayerId('');
+        setNotes('');
+        setSplitType('equal');
+        setSplitInputs(getDefaultSplitInputs(group.members.map(m => m.id), 'equal'));
+      }
+    }
+  }, [open, group.members, transaction]);
+
+  // Update split inputs when split type changes (for new transactions only)
+  useEffect(() => {
+    if (open && !transaction) {
+      setSplitInputs(getDefaultSplitInputs(group.members.map(m => m.id), splitType));
+    }
+  }, [splitType, open, transaction, group.members]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const transactionSplits = Object.entries(splits).map(([memberId, percentage]) => ({
-      memberId,
-      amount: (percentage / 100) * parseFloat(amount),
-      percentage
-    }));
+    const numericAmount = parseFloat(amount);
+    const calculatedSplits = calculateSplits(numericAmount, splitType, splitInputs);
+
     onSubmit({
       description,
-      amount: parseFloat(amount),
+      amount: numericAmount,
       category,
       payerId,
-      splits: transactionSplits,
+      splitType,
+      splits: calculatedSplits,
       notes,
-      date: new Date(),
-      createdAt: new Date(),
+      date: transaction?.date || new Date(),
+      createdAt: transaction?.createdAt || new Date(),
       updatedAt: new Date()
     });
     onClose();
   };
 
-  const handleSplitChange = (memberId: string, value: string) => {
-    const numValue = parseFloat(value) || 0;
-    setSplits(prev => ({
-      ...prev,
-      [memberId]: numValue
-    }));
+  const handleClose = () => {
+    // Reset form
+    setDescription('');
+    setAmount('');
+    setCategory('');
+    setPayerId('');
+    setNotes('');
+    setSplitType('equal');
+    setSplitInputs([]);
+    onClose();
   };
 
-  const totalSplit = Object.values(splits).reduce((sum, value) => sum + value, 0);
-  const isValid = 
-    description.trim() !== '' && 
-    !isNaN(parseFloat(amount)) && 
-    parseFloat(amount) > 0 && 
-    category.trim() !== '' && 
-    payerId !== '' && 
-    totalSplit === 100;
+  const numericAmount = parseFloat(amount) || 0;
+  const splitValidation = validateSplits(numericAmount, splitType, splitInputs);
+
+  const isValid =
+    description.trim() !== '' &&
+    !isNaN(parseFloat(amount)) &&
+    parseFloat(amount) > 0 &&
+    category.trim() !== '' &&
+    payerId !== '' &&
+    splitValidation.valid;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Transaction</DialogTitle>
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{transaction ? 'Edit Transaction' : 'Add Transaction'}</DialogTitle>
       <DialogContent>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
           <TextField
             fullWidth
             label="Description"
@@ -75,7 +138,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
             error={description.trim() === ''}
             helperText={description.trim() === '' ? 'Description is required' : ''}
           />
-          <div style={{ display: 'flex', gap: '16px' }}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
               fullWidth
               label="Amount"
@@ -85,6 +148,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
               required
               error={isNaN(parseFloat(amount)) || parseFloat(amount) <= 0}
               helperText={isNaN(parseFloat(amount)) || parseFloat(amount) <= 0 ? 'Amount must be greater than 0' : ''}
+              inputProps={{ min: 0, step: 0.01 }}
             />
             <TextField
               fullWidth
@@ -95,7 +159,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
               error={category.trim() === ''}
               helperText={category.trim() === '' ? 'Category is required' : ''}
             />
-          </div>
+          </Box>
           <FormControl fullWidth required error={payerId === ''}>
             <InputLabel>Payer</InputLabel>
             <Select
@@ -110,50 +174,39 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
               ))}
             </Select>
           </FormControl>
-          <div>
-            <Typography variant="subtitle1" gutterBottom>
-              Split Among Members
-            </Typography>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {group.members.map((member) => (
-                <TextField
-                  key={member.id}
-                  fullWidth
-                  label={member.name}
-                  type="number"
-                  value={splits[member.id] || ''}
-                  onChange={(e) => handleSplitChange(member.id, e.target.value)}
-                  error={totalSplit !== 100}
-                />
-              ))}
-            </div>
-            <Typography color={totalSplit === 100 ? 'success.main' : 'error.main'}>
-              Total: {totalSplit}%
-            </Typography>
-          </div>
+
+          <SplitTypeSelector
+            splitType={splitType}
+            onSplitTypeChange={setSplitType}
+            members={group.members}
+            splitInputs={splitInputs}
+            onSplitInputsChange={setSplitInputs}
+            totalAmount={numericAmount}
+          />
+
           <TextField
             fullWidth
             label="Notes"
             multiline
-            rows={4}
+            rows={3}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
-        </div>
+        </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button 
-          onClick={handleSubmit} 
-          variant="contained" 
+        <Button onClick={handleClose}>Cancel</Button>
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
           color="primary"
           disabled={!isValid}
         >
-          Add Transaction
+          {transaction ? 'Save Changes' : 'Add Transaction'}
         </Button>
       </DialogActions>
     </Dialog>
   );
 };
 
-export default TransactionForm; 
+export default TransactionForm;

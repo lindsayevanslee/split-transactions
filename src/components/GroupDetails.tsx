@@ -4,11 +4,6 @@ import {
   Typography,
   Button,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
   Paper,
   Box,
   Table,
@@ -25,9 +20,11 @@ import {
   CircularProgress,
   Alert,
   Tabs,
-  Tab
+  Tab,
+  Chip,
+  Tooltip,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Link as LinkIcon } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Transaction, Payment, Group, Member } from '../types';
@@ -35,6 +32,8 @@ import TransactionSummary from './TransactionSummary';
 import ConfirmationDialog from './ConfirmationDialog';
 import TransactionForm from './TransactionForm';
 import PaymentForm from './PaymentForm';
+import InviteMemberDialog from './InviteMemberDialog';
+import { createInvitation } from '../services/invitations';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -65,7 +64,7 @@ function TabPanel(props: TabPanelProps) {
 const GroupDetails = () => {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
-  const { groups, loading, error, updateGroup } = useApp();
+  const { groups, loading, error, updateGroup, isGroupOwner, canManageMembers } = useApp();
   const { user } = useAuth();
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
@@ -75,9 +74,10 @@ const GroupDetails = () => {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
-  const [newMemberName, setNewMemberName] = useState('');
-  const [open, setOpen] = useState(false);
   const [tabValue, setTabValue] = useState(0);
+
+  const isOwner = groupId ? isGroupOwner(groupId) : false;
+  const canManage = groupId ? canManageMembers(groupId) : false;
 
   useEffect(() => {
     if (groupId && groups.length > 0) {
@@ -178,42 +178,32 @@ const GroupDetails = () => {
 
   const handleDeletePayment = async (paymentId: string) => {
     if (!group || !groupId) return;
-    
+
     const updatedGroup = {
       ...group,
       payments: group.payments.filter(p => p.id !== paymentId)
     };
-    
+
     await updateGroup(groupId, updatedGroup);
   };
 
-  const handleAddMember = async () => {
-    if (!group || !newMemberName.trim()) return;
-
-    try {
-      const updatedGroup = {
-        ...group,
-        members: [...group.members, { 
-          id: crypto.randomUUID(), 
-          name: newMemberName.trim(),
-          balance: 0
-        }]
-      };
-      await updateGroup(group.id, updatedGroup);
-      setNewMemberName('');
-      setOpen(false);
-    } catch (error) {
-      console.error('Error adding member:', error);
-    }
+  const handleUpdateGroupWithMember = async (updatedGroup: Group) => {
+    if (!groupId) return;
+    await updateGroup(groupId, updatedGroup);
   };
 
   const handleDeleteMember = async (memberId: string) => {
-    if (!group) return;
+    if (!group || !canManage) return;
 
     try {
       const updatedGroup: Group = {
         ...group,
-        members: group.members.filter((m: Member) => m.id !== memberId)
+        members: group.members.filter((m: Member) => m.id !== memberId),
+        // Also remove from memberUserIds if they had an account linked
+        memberUserIds: group.memberUserIds.filter(uid => {
+          const member = group.members.find(m => m.id === memberId);
+          return uid !== member?.userId;
+        }),
       };
       await updateGroup(groupId!, updatedGroup);
     } catch (err) {
@@ -221,15 +211,36 @@ const GroupDetails = () => {
     }
   };
 
+  const handleGenerateInviteLink = async (member: Member) => {
+    if (!group || !user || !canManage) return;
+
+    try {
+      const { inviteLink } = await createInvitation(
+        group.id,
+        group.name,
+        member.id,
+        user.uid
+      );
+
+      // Update member status to invited
+      const updatedMembers = group.members.map(m =>
+        m.id === member.id ? { ...m, status: 'invited' as const } : m
+      );
+      await updateGroup(group.id, { ...group, members: updatedMembers });
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(inviteLink);
+      alert('Invite link copied to clipboard!');
+    } catch (err) {
+      console.error('Error generating invite link:', err);
+    }
+  };
+
   const handleUpdatePayment = (payment: Omit<Payment, 'id'>) => {
     if (!group || !groupId || !editingPayment) return;
 
     const updatedGroup: Group = {
-      id: group.id,
-      name: group.name,
-      userId: group.userId,
-      members: group.members,
-      transactions: group.transactions,
+      ...group,
       payments: group.payments.map(p =>
         p.id === editingPayment.id
           ? {
@@ -239,13 +250,23 @@ const GroupDetails = () => {
             }
           : p
       ),
-      customCategories: group.customCategories,
-      createdAt: group.createdAt,
       updatedAt: new Date(),
     };
     updateGroup(groupId, updatedGroup);
     setPaymentDialogOpen(false);
     setEditingPayment(null);
+  };
+
+  const getMemberStatusChip = (member: Member) => {
+    switch (member.status) {
+      case 'active':
+        return <Chip label="Active" size="small" color="success" variant="outlined" />;
+      case 'invited':
+        return <Chip label="Invited" size="small" color="warning" variant="outlined" />;
+      case 'placeholder':
+      default:
+        return <Chip label="Placeholder" size="small" variant="outlined" />;
+    }
   };
 
   if (!user) {
@@ -284,12 +305,21 @@ const GroupDetails = () => {
   return (
     <Container>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          {group.name}
-        </Typography>
-        <Button variant="contained" onClick={() => setMemberDialogOpen(true)}>
-          Add Member
-        </Button>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="h4" component="h1">
+            {group.name}
+          </Typography>
+          {isOwner ? (
+            <Chip label="Owner" size="small" color="primary" />
+          ) : (
+            <Chip label="Member" size="small" variant="outlined" />
+          )}
+        </Box>
+        {canManage && (
+          <Button variant="contained" onClick={() => setMemberDialogOpen(true)}>
+            Add Member
+          </Button>
+        )}
       </Box>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -313,15 +343,36 @@ const GroupDetails = () => {
                     key={member.id}
                     sx={{ mb: 1, borderRadius: 1, bgcolor: 'background.paper' }}
                   >
-                    <ListItemText primary={member.name} />
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {member.name}
+                          {getMemberStatusChip(member)}
+                        </Box>
+                      }
+                    />
                     <ListItemSecondaryAction>
-                      <IconButton
-                        edge="end"
-                        aria-label="delete"
-                        onClick={() => handleDeleteMember(member.id)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                      {canManage && member.status === 'placeholder' && (
+                        <Tooltip title="Generate invite link">
+                          <IconButton
+                            edge="end"
+                            aria-label="invite"
+                            onClick={() => handleGenerateInviteLink(member)}
+                            sx={{ mr: 1 }}
+                          >
+                            <LinkIcon />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {canManage && member.userId !== user?.uid && (
+                        <IconButton
+                          edge="end"
+                          aria-label="delete"
+                          onClick={() => handleDeleteMember(member.id)}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      )}
                     </ListItemSecondaryAction>
                   </ListItem>
                 ))}
@@ -356,6 +407,13 @@ const GroupDetails = () => {
                     <Typography variant="subtitle1">{transaction.description}</Typography>
                     <Typography variant="body2" color="text.secondary">
                       {new Date(transaction.date).toLocaleDateString()} - {formatCurrency(transaction.amount)}
+                      {transaction.splitType && (
+                        <Chip
+                          label={transaction.splitType === 'percentage' ? '%' : transaction.splitType}
+                          size="small"
+                          sx={{ ml: 1 }}
+                        />
+                      )}
                     </Typography>
                   </Box>
                   <Box>
@@ -440,25 +498,13 @@ const GroupDetails = () => {
         </TableContainer>
       </TabPanel>
 
-      <Dialog open={memberDialogOpen} onClose={() => setMemberDialogOpen(false)}>
-        <DialogTitle>Add New Member</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Member Name"
-            fullWidth
-            value={newMemberName}
-            onChange={(e) => setNewMemberName(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setMemberDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleAddMember} variant="contained">
-            Add
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <InviteMemberDialog
+        open={memberDialogOpen}
+        onClose={() => setMemberDialogOpen(false)}
+        group={group}
+        onUpdateGroup={handleUpdateGroupWithMember}
+        userId={user?.uid || ''}
+      />
 
       <TransactionForm
         open={transactionDialogOpen}
@@ -489,28 +535,8 @@ const GroupDetails = () => {
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
       />
-
-      <Dialog open={open} onClose={() => setOpen(false)}>
-        <DialogTitle>Add New Member</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Member Name"
-            fullWidth
-            value={newMemberName}
-            onChange={(e) => setNewMemberName(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleAddMember} variant="contained">
-            Add
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Container>
   );
 };
 
-export default GroupDetails; 
+export default GroupDetails;
