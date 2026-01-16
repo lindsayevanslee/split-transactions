@@ -1,11 +1,26 @@
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* Google Fonts - Vintage Banking Typography */
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,600;0,6..96,700;0,6..96,800;1,6..96,400&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+:root {
+  /* Retro Banking Color Palette */
+  --paper-cream: #f5f0e1;
+  --paper-light: #faf6eb;
+  --paper-dark: #efe9d9;
+  --ink-dark: #2c2416;
+  --ink-faded: #5c4d3a;
+  --banker-green: #1a472a;
+  --banker-green-light: #2d5a3d;
+  --banker-green-dark: #0d2818;
+  --ledger-red: #8b0000;
+  --ruled-line: #c4b89b;
+  --gold-accent: #b8860b;
+
+  font-family: 'Crimson Pro', 'Georgia', serif;
+  line-height: 1.6;
+  font-weight: 400;
+  color-scheme: light;
+  color: var(--ink-dark);
+  background-color: var(--paper-cream);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,60 +28,150 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Links styled like vintage document references */
 a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+  font-weight: 600;
+  color: var(--banker-green);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
 }
 a:hover {
-  color: #535bf2;
+  color: var(--banker-green-light);
+  text-decoration-style: solid;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #f5f5f5;
+  background-color: var(--paper-cream);
+  /* Subtle paper texture with ruled lines */
+  background-image:
+    linear-gradient(var(--ruled-line) 1px, transparent 1px),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  background-size: 100% 28px, 200px 200px;
+}
+
+/* Headings use elegant high-contrast display serif */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Bodoni Moda', 'Didot', 'Georgia', serif;
+  color: var(--ink-dark);
+  margin-top: 0;
 }
 
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  font-size: 2.75em;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
+h2 {
+  font-size: 2.25em;
+  border-bottom: 2px solid var(--banker-green);
+  padding-bottom: 0.3em;
+}
+
+/* Monospace font for currency/numbers */
+.currency, .amount, .number {
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
   font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  letter-spacing: -0.02em;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+/* Credit amounts (positive/green) */
+.credit {
+  color: var(--banker-green);
+}
+
+/* Debit amounts (negative/red) */
+.debit {
+  color: var(--ledger-red);
+}
+
+/* Vintage stamp/seal effect for status badges */
+.stamp {
+  font-family: 'Bodoni Moda', serif;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+  border: 3px solid currentColor;
+  padding: 0.25em 0.75em;
+  transform: rotate(-3deg);
+  opacity: 0.85;
+}
+
+/* Ledger row alternating colors */
+.ledger-row:nth-child(even) {
+  background-color: var(--paper-dark);
+}
+
+/* Decorative corner flourish for cards */
+.flourish {
+  position: relative;
+}
+.flourish::before,
+.flourish::after {
+  content: '✦';
+  position: absolute;
+  color: var(--gold-accent);
+  font-size: 0.75em;
+  opacity: 0.6;
+}
+.flourish::before {
+  top: 8px;
+  left: 8px;
+}
+.flourish::after {
+  bottom: 8px;
+  right: 8px;
+}
+
+/* Remove default button styling - let MUI handle it */
+button {
+  font-family: inherit;
+}
+
+/* Focus styles */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--banker-green);
+  outline-offset: 2px;
 }
 
 #root {
   width: 100%;
   min-height: 100vh;
+}
+
+/* Custom scrollbar for that vintage feel */
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--paper-dark);
+  border-left: 1px solid var(--ruled-line);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ruled-line);
+  border: 2px solid var(--paper-dark);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faded);
+}
+
+/* Print styles - make it look like a real ledger printout */
+@media print {
+  body {
+    background: white;
+    background-image: none;
+  }
+
+  .no-print {
+    display: none !important;
+  }
 }

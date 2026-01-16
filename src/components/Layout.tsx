@@ -79,19 +79,80 @@ const Layout = ({ children }: LayoutProps) => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Split Transactions
-          </Typography>
+        <Toolbar sx={{ justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {/* Vintage ledger icon */}
+            <Box
+              component="span"
+              sx={{
+                fontFamily: '"Bodoni Moda", serif',
+                fontSize: '2rem',
+                fontWeight: 700,
+                opacity: 0.9,
+                fontStyle: 'italic'
+              }}
+            >
+              §
+            </Box>
+            <Box>
+              <Typography
+                variant="h6"
+                component="div"
+                sx={{
+                  fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+                  fontWeight: 500,
+                  letterSpacing: '0.02em',
+                  lineHeight: 1.1,
+                  fontSize: '1.65rem'
+                }}
+              >
+                Split Transactions
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  opacity: 0.85,
+                  fontSize: '0.65rem',
+                  fontWeight: 500
+                }}
+              >
+                Expense Ledger & Settlement
+              </Typography>
+            </Box>
+          </Box>
           {user && (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Typography variant="body1" component="span" sx={{ mr: 1 }}>
-                {user.displayName || user.email}
-              </Typography>
+              <Box sx={{ textAlign: 'right', mr: 1 }}>
+                <Typography
+                  variant="body2"
+                  component="div"
+                  sx={{ fontWeight: 600, lineHeight: 1.2 }}
+                >
+                  {user.displayName || user.email}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    opacity: 0.7,
+                    fontSize: '0.65rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em'
+                  }}
+                >
+                  Account Holder
+                </Typography>
+              </Box>
               <IconButton
                 color="inherit"
                 onClick={handleMenuOpen}
                 size="small"
+                sx={{
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
+                }}
               >
                 <AccountCircleIcon />
               </IconButton>
