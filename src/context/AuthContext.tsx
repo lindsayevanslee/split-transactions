@@ -5,9 +5,9 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
   updateProfile,
+  sendPasswordResetEmail,
   User
-} from 'firebase/auth';
-import { sendPasswordResetEmail } from '@firebase/auth';
+} from '@firebase/auth';
 import { auth } from '../firebase/config';
 
 interface AuthContextType {

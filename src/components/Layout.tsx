@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import {
   AppBar,
   Toolbar,
@@ -28,7 +28,6 @@ interface LayoutProps {
 const Layout = ({ children }: LayoutProps) => {
   const { user, signOut, loading, updateDisplayName } = useAuth();
   const { syncDisplayName } = useApp();
-  const location = useLocation();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [editNameOpen, setEditNameOpen] = useState(false);
   const [newDisplayName, setNewDisplayName] = useState('');

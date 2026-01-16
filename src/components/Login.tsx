@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -28,7 +28,6 @@ const Login = () => {
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const navigate = useNavigate();
-  const location = useLocation();
   const { signIn, signUp, resetPassword } = useAuth();
 
   const getErrorMessage = (error: AuthError): string => {
