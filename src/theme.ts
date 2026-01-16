@@ -39,34 +39,34 @@ const theme = createTheme({
     // IBM Plex Mono: monospace for numbers/currency
     fontFamily: '"Crimson Pro", "Georgia", "Times New Roman", serif',
     h1: {
-      fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+      fontFamily: '"Merriweather", Georgia, serif',
       fontWeight: 600,
       fontSize: '2.75rem',
       letterSpacing: '0.02em',
     },
     h2: {
-      fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+      fontFamily: '"Merriweather", Georgia, serif',
       fontWeight: 600,
       fontSize: '2.25rem',
     },
     h3: {
-      fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+      fontFamily: '"Merriweather", Georgia, serif',
       fontWeight: 600,
       fontSize: '1.85rem',
     },
     h4: {
-      fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+      fontFamily: '"Merriweather", Georgia, serif',
       fontWeight: 600,
       fontSize: '1.5rem',
       letterSpacing: '0.01em',
     },
     h5: {
-      fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+      fontFamily: '"Merriweather", Georgia, serif',
       fontWeight: 600,
       fontSize: '1.3rem',
     },
     h6: {
-      fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+      fontFamily: '"Merriweather", Georgia, serif',
       fontWeight: 700,
       textTransform: 'uppercase',
       letterSpacing: '0.12em',
@@ -94,7 +94,7 @@ const theme = createTheme({
       letterSpacing: '0.02em',
     },
     overline: {
-      fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+      fontFamily: '"Merriweather", Georgia, serif',
       fontWeight: 600,
       letterSpacing: '0.15em',
     },
@@ -107,9 +107,27 @@ const theme = createTheme({
       styleOverrides: {
         body: {
           backgroundImage: `
-            linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px)
+            linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px)
           `,
           backgroundSize: '100% 28px',
+          position: 'relative',
+          cursor: 'url(/split-transactions/cursor-pen.svg) 4 4, auto',
+          '&::before, &::after': {
+            content: '""',
+            position: 'fixed',
+            top: 0,
+            bottom: 0,
+            width: '2px',
+            backgroundColor: 'rgba(139, 0, 0, 0.2)',
+            pointerEvents: 'none',
+            zIndex: 0,
+          },
+          '&::before': {
+            left: 'max(16px, calc((100vw - 1200px) / 2 - 24px))',
+          },
+          '&::after': {
+            right: 'max(16px, calc((100vw - 1200px) / 2 - 24px))',
+          },
         },
       },
     },
@@ -160,6 +178,7 @@ const theme = createTheme({
         root: {
           boxShadow: '0 2px 0 rgba(0,0,0,0.1)',
           borderBottom: '2px solid #0d2818',
+          border: 'none',
         },
       },
     },
@@ -247,7 +266,7 @@ const theme = createTheme({
     MuiDialogTitle: {
       styleOverrides: {
         root: {
-          fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+          fontFamily: '"Merriweather", Georgia, serif',
           fontWeight: 600,
           fontSize: '1.25rem',
           borderBottom: '1px solid #c4b89b',

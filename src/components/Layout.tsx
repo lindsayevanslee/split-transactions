@@ -85,7 +85,7 @@ const Layout = ({ children }: LayoutProps) => {
             <Box
               component="span"
               sx={{
-                fontFamily: '"Bodoni Moda", serif',
+                fontFamily: '"Merriweather", serif',
                 fontSize: '2rem',
                 fontWeight: 700,
                 opacity: 0.9,
@@ -99,19 +99,19 @@ const Layout = ({ children }: LayoutProps) => {
                 variant="h6"
                 component="div"
                 sx={{
-                  fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+                  fontFamily: '"Merriweather", Georgia, serif',
                   fontWeight: 500,
                   letterSpacing: '0.02em',
                   lineHeight: 1.1,
                   fontSize: '1.65rem'
                 }}
               >
-                Split Transactions
+                Ledgr
               </Typography>
               <Typography
                 variant="caption"
                 sx={{
-                  fontFamily: '"Bodoni Moda", Didot, Georgia, serif',
+                  fontFamily: '"Merriweather", Georgia, serif',
                   letterSpacing: '0.2em',
                   textTransform: 'uppercase',
                   opacity: 0.85,

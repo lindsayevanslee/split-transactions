@@ -151,7 +151,7 @@ const Login = () => {
           }}
         >
           <Typography component="h1" variant="h5">
-            {isSignUp ? 'Create an Account' : 'Sign in to Split Transactions'}
+            {isSignUp ? 'Create an Account' : 'Sign in to Ledgr'}
           </Typography>
           {error && (
             <Alert severity="error" sx={{ mt: 2, width: '100%' }}>

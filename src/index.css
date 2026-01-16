@@ -1,5 +1,5 @@
 /* Google Fonts - Vintage Banking Typography */
-@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,600;0,6..96,700;0,6..96,800;1,6..96,400&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
   /* Retro Banking Color Palette */
@@ -55,7 +55,7 @@ body {
 
 /* Headings use elegant high-contrast display serif */
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Bodoni Moda', 'Didot', 'Georgia', serif;
+  font-family: 'Merriweather', 'Georgia', serif;
   color: var(--ink-dark);
   margin-top: 0;
 }
@@ -91,7 +91,7 @@ h2 {
 
 /* Vintage stamp/seal effect for status badges */
 .stamp {
-  font-family: 'Bodoni Moda', serif;
+  font-family: 'Merriweather', serif;
   text-transform: uppercase;
   letter-spacing: 0.15em;
   font-weight: 700;
