@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { generateToken, getInviteLink, isFirestoreInvitation } from './invitations';
+import { generateToken, getInviteLink, isFirestoreInvitation } from './invitation-utils';
 
 // Mock window.location for getBaseUrl tests
 const mockLocation = {
