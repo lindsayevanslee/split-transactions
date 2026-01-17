@@ -24,7 +24,7 @@ import {
   Chip,
   Tooltip,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Link as LinkIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Link as LinkIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Transaction, Payment, Group, Member } from '../types';
@@ -321,6 +321,11 @@ const GroupDetails = () => {
     <Container>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Tooltip title="Back to Groups">
+            <IconButton onClick={() => navigate('/groups')} sx={{ mr: 1 }}>
+              <ArrowBackIcon />
+            </IconButton>
+          </Tooltip>
           <Typography variant="h4" component="h1">
             {group.name}
           </Typography>
