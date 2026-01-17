@@ -179,6 +179,7 @@ const theme = createTheme({
           boxShadow: '0 2px 0 rgba(0,0,0,0.1)',
           borderBottom: '2px solid #0d2818',
           border: 'none',
+          zIndex: 1,
         },
       },
     },
