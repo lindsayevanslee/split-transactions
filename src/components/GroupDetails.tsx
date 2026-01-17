@@ -222,17 +222,32 @@ const GroupDetails = () => {
         user.uid
       );
 
-      // Update member status to invited
-      const updatedMembers = group.members.map(m =>
-        m.id === member.id ? { ...m, status: 'invited' as const } : m
-      );
-      await updateGroup(group.id, { ...group, members: updatedMembers });
+      // Update member status to invited (only if not already invited)
+      if (member.status !== 'invited') {
+        const updatedMembers = group.members.map(m =>
+          m.id === member.id ? { ...m, status: 'invited' as const } : m
+        );
+        await updateGroup(group.id, { ...group, members: updatedMembers });
+      }
 
-      // Copy to clipboard
-      await navigator.clipboard.writeText(inviteLink);
-      alert('Invite link copied to clipboard!');
+      // Try to copy to clipboard, but show link regardless
+      let clipboardSuccess = false;
+      try {
+        await navigator.clipboard.writeText(inviteLink);
+        clipboardSuccess = true;
+      } catch (clipboardErr) {
+        console.warn('Clipboard access denied:', clipboardErr);
+      }
+
+      if (clipboardSuccess) {
+        alert(`Invite link for ${member.name} copied to clipboard!\n\nShare this link with them to join the group.`);
+      } else {
+        // Show the link in a prompt so user can copy it manually
+        prompt(`Invite link for ${member.name}:\n\nCopy this link and share it with them:`, inviteLink);
+      }
     } catch (err) {
       console.error('Error generating invite link:', err);
+      alert('Failed to generate invite link. Please try again.');
     }
   };
 
@@ -352,8 +367,8 @@ const GroupDetails = () => {
                       }
                     />
                     <ListItemSecondaryAction>
-                      {canManage && member.status === 'placeholder' && (
-                        <Tooltip title="Generate invite link">
+                      {canManage && (member.status === 'placeholder' || member.status === 'invited') && (
+                        <Tooltip title={member.status === 'placeholder' ? 'Generate invite link' : 'Copy invite link'}>
                           <IconButton
                             edge="end"
                             aria-label="invite"
