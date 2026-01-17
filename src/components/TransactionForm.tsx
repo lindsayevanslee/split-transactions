@@ -128,7 +128,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>{transaction ? 'Edit Transaction' : 'Add Transaction'}</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
           <TextField
             fullWidth
             label="Description"

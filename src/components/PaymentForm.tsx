@@ -61,7 +61,7 @@ const PaymentForm = ({ open, onClose, onSubmit, group, payment }: PaymentFormPro
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{payment ? 'Edit Payment' : 'Add Payment'}</DialogTitle>
       <DialogContent>
-        <Stack spacing={2}>
+        <Stack spacing={2} sx={{ pt: 2 }}>
           <TextField
             fullWidth
             label="Amount"
@@ -77,6 +77,7 @@ const PaymentForm = ({ open, onClose, onSubmit, group, payment }: PaymentFormPro
             <Select
               value={fromId}
               onChange={(e) => setFromId(e.target.value)}
+              label="From"
             >
               {group.members.map((member) => (
                 <MenuItem key={member.id} value={member.id}>
@@ -90,6 +91,7 @@ const PaymentForm = ({ open, onClose, onSubmit, group, payment }: PaymentFormPro
             <Select
               value={toId}
               onChange={(e) => setToId(e.target.value)}
+              label="To"
             >
               {group.members.map((member) => (
                 <MenuItem key={member.id} value={member.id}>
