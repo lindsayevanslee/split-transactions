@@ -20,14 +20,14 @@ import { Invitation, Member } from '../types';
 export const invitationsCollection = collection(db, 'invitations');
 
 // Generate a secure random token
-function generateToken(): string {
+export function generateToken(): string {
   const array = new Uint8Array(24);
   crypto.getRandomValues(array);
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 // Get the base URL for invite links
-function getBaseUrl(): string {
+export function getBaseUrl(): string {
   return window.location.origin + window.location.pathname;
 }
 
@@ -48,7 +48,7 @@ interface FirestoreInvitation {
   [key: string]: unknown;
 }
 
-function isFirestoreInvitation(data: DocumentData | undefined): data is FirestoreInvitation {
+export function isFirestoreInvitation(data: DocumentData | undefined): data is FirestoreInvitation {
   if (!data) return false;
   return (
     typeof data === 'object' &&
