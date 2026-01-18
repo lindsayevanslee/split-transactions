@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -17,6 +17,46 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { AuthError } from 'firebase/auth';
 
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
+
+// Load reCAPTCHA script dynamically
+const loadRecaptchaScript = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (!RECAPTCHA_SITE_KEY) {
+      resolve(); // Skip if no site key configured
+      return;
+    }
+    if (document.querySelector('script[src*="recaptcha"]')) {
+      resolve(); // Already loaded
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load reCAPTCHA'));
+    document.head.appendChild(script);
+  });
+};
+
+// Execute reCAPTCHA and get token
+const executeRecaptcha = async (action: string): Promise<string | null> => {
+  if (!RECAPTCHA_SITE_KEY) {
+    return null; // Skip if no site key configured
+  }
+  try {
+    return await new Promise((resolve) => {
+      grecaptcha.ready(async () => {
+        const token = await grecaptcha.execute(RECAPTCHA_SITE_KEY, { action });
+        resolve(token);
+      });
+    });
+  } catch {
+    console.warn('reCAPTCHA execution failed');
+    return null;
+  }
+};
+
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,6 +69,13 @@ const Login = () => {
   const [resetEmail, setResetEmail] = useState('');
   const navigate = useNavigate();
   const { signIn, signUp, resetPassword } = useAuth();
+
+  // Load reCAPTCHA script on mount
+  useEffect(() => {
+    loadRecaptchaScript().catch((err) => {
+      console.warn('Failed to load reCAPTCHA:', err);
+    });
+  }, []);
 
   const getErrorMessage = (error: AuthError): string => {
     switch (error.code) {
@@ -60,6 +107,9 @@ const Login = () => {
     setIsLoading(true);
 
     try {
+      // Execute reCAPTCHA before sign in
+      await executeRecaptcha('login');
+
       await signIn(email, password);
       navigate('/groups');
     } catch (err) {
@@ -81,6 +131,9 @@ const Login = () => {
     setIsLoading(true);
 
     try {
+      // Execute reCAPTCHA before sign up
+      await executeRecaptcha('signup');
+
       await signUp(email, password, displayName.trim() || undefined);
       navigate('/groups');
     } catch (err) {
@@ -110,6 +163,9 @@ const Login = () => {
     setError('');
 
     try {
+      // Execute reCAPTCHA before password reset
+      await executeRecaptcha('reset_password');
+
       await resetPassword(resetEmail);
       setResetDialogOpen(false);
       setSuccess('Password reset email sent! Check your inbox (and spam folder).');
