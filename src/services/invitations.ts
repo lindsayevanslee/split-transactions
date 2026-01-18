@@ -8,7 +8,6 @@ import {
   deleteDoc,
   query,
   where,
-  Timestamp,
   DocumentData,
   DocumentSnapshot,
   QuerySnapshot
