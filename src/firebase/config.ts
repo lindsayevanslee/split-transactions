@@ -1,6 +1,7 @@
 import { initializeApp } from '@firebase/app';
 import { getAuth } from '@firebase/auth';
 import { getFirestore } from '@firebase/firestore';
+import { initializeAppCheck, ReCaptchaV3Provider } from '@firebase/app-check';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -43,4 +44,13 @@ try {
 }
 
 export const auth = getAuth(app);
-export const db = getFirestore(app); 
+export const db = getFirestore(app);
+
+// Initialize App Check with reCAPTCHA v3
+const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+if (recaptchaSiteKey) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(recaptchaSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  });
+} 
