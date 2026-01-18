@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { AuthError } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
 
@@ -39,22 +40,28 @@ const loadRecaptchaScript = (): Promise<void> => {
   });
 };
 
-// Execute reCAPTCHA and get token
-const executeRecaptcha = async (action: string): Promise<string | null> => {
+// Execute reCAPTCHA and verify token server-side
+const executeRecaptcha = async (action: string): Promise<void> => {
   if (!RECAPTCHA_SITE_KEY) {
-    return null; // Skip if no site key configured
+    return; // Skip if no site key configured
   }
-  try {
-    return await new Promise((resolve) => {
-      grecaptcha.ready(async () => {
-        const token = await grecaptcha.execute(RECAPTCHA_SITE_KEY, { action });
-        resolve(token);
-      });
+
+  // Get token from reCAPTCHA
+  const token = await new Promise<string>((resolve, reject) => {
+    grecaptcha.ready(async () => {
+      try {
+        const t = await grecaptcha.execute(RECAPTCHA_SITE_KEY, { action });
+        resolve(t);
+      } catch (err) {
+        reject(err);
+      }
     });
-  } catch {
-    console.warn('reCAPTCHA execution failed');
-    return null;
-  }
+  });
+
+  // Verify token server-side
+  const functions = getFunctions();
+  const verifyRecaptcha = httpsCallable(functions, 'verifyRecaptcha');
+  await verifyRecaptcha({ token, action });
 };
 
 const Login = () => {
