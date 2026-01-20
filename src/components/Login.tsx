@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -16,53 +16,6 @@ import {
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { AuthError } from 'firebase/auth';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-
-const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY as string | undefined;
-
-// Load reCAPTCHA script dynamically
-const loadRecaptchaScript = (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    if (!RECAPTCHA_SITE_KEY) {
-      resolve(); // Skip if no site key configured
-      return;
-    }
-    if (document.querySelector('script[src*="recaptcha"]')) {
-      resolve(); // Already loaded
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load reCAPTCHA'));
-    document.head.appendChild(script);
-  });
-};
-
-// Execute reCAPTCHA and verify token server-side
-const executeRecaptcha = async (action: string): Promise<void> => {
-  if (!RECAPTCHA_SITE_KEY) {
-    return; // Skip if no site key configured
-  }
-
-  // Get token from reCAPTCHA
-  const token = await new Promise<string>((resolve, reject) => {
-    grecaptcha.ready(async () => {
-      try {
-        const t = await grecaptcha.execute(RECAPTCHA_SITE_KEY, { action });
-        resolve(t);
-      } catch (err) {
-        reject(err);
-      }
-    });
-  });
-
-  // Verify token server-side
-  const functions = getFunctions();
-  const verifyRecaptcha = httpsCallable(functions, 'verifyRecaptcha');
-  await verifyRecaptcha({ token, action });
-};
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -76,13 +29,6 @@ const Login = () => {
   const [resetEmail, setResetEmail] = useState('');
   const navigate = useNavigate();
   const { signIn, signUp, resetPassword } = useAuth();
-
-  // Load reCAPTCHA script on mount
-  useEffect(() => {
-    loadRecaptchaScript().catch((err) => {
-      console.warn('Failed to load reCAPTCHA:', err);
-    });
-  }, []);
 
   const getErrorMessage = (error: AuthError): string => {
     switch (error.code) {
@@ -114,9 +60,6 @@ const Login = () => {
     setIsLoading(true);
 
     try {
-      // Execute reCAPTCHA before sign in
-      await executeRecaptcha('login');
-
       await signIn(email, password);
       navigate('/groups');
     } catch (err) {
@@ -138,9 +81,6 @@ const Login = () => {
     setIsLoading(true);
 
     try {
-      // Execute reCAPTCHA before sign up
-      await executeRecaptcha('signup');
-
       await signUp(email, password, displayName.trim() || undefined);
       navigate('/groups');
     } catch (err) {
@@ -170,9 +110,6 @@ const Login = () => {
     setError('');
 
     try {
-      // Execute reCAPTCHA before password reset
-      await executeRecaptcha('reset_password');
-
       await resetPassword(resetEmail);
       setResetDialogOpen(false);
       setSuccess('Password reset email sent! Check your inbox (and spam folder).');
