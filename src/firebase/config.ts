@@ -1,6 +1,7 @@
 import { initializeApp } from '@firebase/app';
 import { getAuth } from '@firebase/auth';
 import { getFirestore } from '@firebase/firestore';
+import { getFunctions } from '@firebase/functions';
 import { initializeAppCheck, ReCaptchaV3Provider } from '@firebase/app-check';
 
 // Your web app's Firebase configuration
@@ -46,11 +47,23 @@ try {
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Initialize App Check with reCAPTCHA v3
+// Initialize App Check before Functions
+// In development, set debug token flag before initializing App Check
+// The debug token will be logged to console - register it in Firebase Console
+// under App Check > Apps > Manage debug tokens
+const isLocalhost = typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+if (isLocalhost) {
+  (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN: boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+}
+
 const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 if (recaptchaSiteKey) {
   initializeAppCheck(app, {
     provider: new ReCaptchaV3Provider(recaptchaSiteKey),
     isTokenAutoRefreshEnabled: true,
   });
-} 
+}
+
+export const functions = getFunctions(app); 

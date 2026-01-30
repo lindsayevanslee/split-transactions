@@ -1,19 +1,17 @@
 import {
   collection,
   doc,
-  getDoc,
   getDocs,
   addDoc,
-  updateDoc,
   deleteDoc,
   query,
   where,
   DocumentData,
-  DocumentSnapshot,
   QuerySnapshot
 } from '@firebase/firestore';
-import { db } from '../firebase/config';
-import { Invitation, Member } from '../types';
+import { httpsCallable } from '@firebase/functions';
+import { db, functions } from '../firebase/config';
+import { Invitation } from '../types';
 import {
   generateToken,
   getInviteLink,
@@ -111,75 +109,28 @@ export async function getGroupInvitations(groupId: string): Promise<Invitation[]
     .filter((inv): inv is Invitation => inv !== null);
 }
 
-// Accept an invitation - links the user account to the member
+// Accept an invitation - calls Cloud Function which handles this securely
+// The Cloud Function has admin access so users don't need read access to groups
+// they're not yet members of, preventing the Firebase security vulnerability
+// where any authenticated user could read any group's data.
 export async function acceptInvitation(
   invitationId: string,
-  userId: string,
+  _userId: string, // Kept for API compatibility, but Cloud Function uses auth context
   userDisplayName?: string,
   userEmail?: string
 ): Promise<{ groupId: string }> {
-  // Get the invitation
-  const invitationRef = doc(db, 'invitations', invitationId);
-  const invitationSnap: DocumentSnapshot<DocumentData> = await getDoc(invitationRef);
-  const invitationRawData = invitationSnap.data();
+  const acceptInvitationFn = httpsCallable<
+    { invitationId: string; userDisplayName?: string; userEmail?: string },
+    { groupId: string }
+  >(functions, 'acceptInvitation');
 
-  if (!invitationRawData) {
-    throw new Error('Invitation not found');
-  }
-
-  if (!isFirestoreInvitation(invitationRawData)) {
-    throw new Error('Invalid invitation data');
-  }
-
-  const invitationData = invitationRawData;
-
-  if (invitationData.status !== 'pending') {
-    throw new Error('Invitation is no longer valid');
-  }
-
-  if (new Date() > invitationData.expiresAt.toDate()) {
-    // Mark as expired
-    await updateDoc(invitationRef, { status: 'expired' });
-    throw new Error('Invitation has expired');
-  }
-
-  // Get the group
-  const groupRef = doc(db, 'groups', invitationData.groupId);
-  const groupSnap: DocumentSnapshot<DocumentData> = await getDoc(groupRef);
-  const groupRawData = groupSnap.data();
-
-  if (!groupRawData) {
-    throw new Error('Group not found');
-  }
-
-  const groupData = groupRawData as { members: Member[]; memberUserIds: string[] };
-
-  // Update the member with the user's account and display name
-  const updatedMembers: Member[] = groupData.members.map(member =>
-    member.id === invitationData.memberId
-      ? {
-          ...member,
-          userId,
-          status: 'active' as const,
-          joinedAt: new Date(),
-          // Update name to user's display name if available, otherwise keep original
-          name: userDisplayName || member.name,
-          email: userEmail,
-        }
-      : member
-  );
-
-  // Update group: add userId to memberUserIds and update the member
-  await updateDoc(groupRef, {
-    memberUserIds: [...(groupData.memberUserIds || []), userId],
-    members: updatedMembers,
-    updatedAt: new Date(),
+  const result = await acceptInvitationFn({
+    invitationId,
+    userDisplayName,
+    userEmail,
   });
 
-  // Mark invitation as accepted
-  await updateDoc(invitationRef, { status: 'accepted' });
-
-  return { groupId: invitationData.groupId };
+  return result.data;
 }
 
 // Cancel/delete an invitation

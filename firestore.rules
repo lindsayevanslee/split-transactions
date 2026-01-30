@@ -21,8 +21,11 @@ service cloud.firestore {
 
     // Groups collection rules
     match /groups/{groupId} {
-      // Members can read. Also allow single-doc get for authenticated users (needed for invitation acceptance)
-      allow get: if isAuthenticated();
+      // Only members can read group data
+      // This prevents the Firebase security vulnerability where any authenticated
+      // user could read any group's data (see: 404media article on AI chat app leak)
+      allow get: if isAuthenticated() &&
+                 request.auth.uid in resource.data.memberUserIds;
       allow list: if isAuthenticated() &&
                   request.auth.uid in resource.data.memberUserIds;
 
@@ -31,18 +34,15 @@ service cloud.firestore {
                    request.resource.data.userId == request.auth.uid &&
                    request.auth.uid in request.resource.data.memberUserIds;
 
-      // Owner can do anything; members can only modify transactions/payments (not ownership/members)
-      // Also allow: user accepting invitation (adding themselves to memberUserIds)
+      // Owner can update anything; members can only modify transactions/payments (not ownership/members)
+      // Note: Invitation acceptance is handled by Cloud Function with admin privileges,
+      // so we no longer need client-side rules for non-members to add themselves
       allow update: if isAuthenticated() &&
                    (resource.data.userId == request.auth.uid ||
                    (request.auth.uid in resource.data.memberUserIds &&
                     request.resource.data.userId == resource.data.userId &&
                     request.resource.data.memberUserIds == resource.data.memberUserIds &&
-                    request.resource.data.members == resource.data.members) ||
-                   // Allow invitation acceptance: user adds themselves to memberUserIds
-                   (!(request.auth.uid in resource.data.memberUserIds) &&
-                    request.auth.uid in request.resource.data.memberUserIds &&
-                    request.resource.data.userId == resource.data.userId));
+                    request.resource.data.members == resource.data.members));
 
       // Only owner can delete
       allow delete: if isAuthenticated() &&
