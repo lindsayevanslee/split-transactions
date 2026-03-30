@@ -1,4 +1,5 @@
 name: Security Audit
+run-name: "Security audit — scan npm dependencies for vulnerabilities"
 
 on:
   schedule:
