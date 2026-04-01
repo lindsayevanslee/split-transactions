@@ -120,18 +120,17 @@ jobs:
 
           if [ -n "$EXISTING_PR" ]; then
             # Update existing PR branch
-            EXISTING_BRANCH=$(gh pr view "$EXISTING_PR" --json headRefName --jq '.headRefName')
-            git checkout -B "$EXISTING_BRANCH"
-            git add package.json package-lock.json functions/package.json functions/package-lock.json
-            git commit -m "Update security audit overrides ($DATE)" || true
-            git push origin "$EXISTING_BRANCH" --force-with-lease
+            BRANCH=$(gh pr view "$EXISTING_PR" --json headRefName --jq '.headRefName')
+          fi
+
+          git checkout -B "$BRANCH"
+          git add package.json package-lock.json functions/package.json functions/package-lock.json
+          git commit -m "Add security audit overrides ($DATE)" || true
+          git push origin "$BRANCH" --force-with-lease
+
+          if [ -n "$EXISTING_PR" ]; then
             echo "Updated existing PR #$EXISTING_PR"
           else
-            # Create new branch and PR
-            git checkout -b "$BRANCH"
-            git add package.json package-lock.json functions/package.json functions/package-lock.json
-            git commit -m "Add security audit overrides ($DATE)"
-            git push origin "$BRANCH"
             gh pr create \
               --title "Security: automated audit fixes ($DATE)" \
               --body "$PR_BODY"
