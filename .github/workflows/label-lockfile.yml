@@ -1,0 +1,56 @@
+name: Label lockfile changes
+
+on:
+  pull_request:
+    paths:
+      - "package-lock.json"
+      - "functions/package-lock.json"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label-and-comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add lockfile-change label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "lockfile-change" 2>/dev/null || \
+            gh label create "lockfile-change" --repo "$REPO" --color "D93F0B" --description "PR modifies package-lock.json — review for unexpected new dependencies" && \
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "lockfile-change"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Summarize lockfile changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # Get list of new dependencies added in this PR
+          NEW_DEPS=$(git diff "origin/$BASE_REF"...HEAD -- package-lock.json functions/package-lock.json \
+            | grep '^+.*"node_modules/' \
+            | grep -v '^+++' \
+            | sed 's/.*"node_modules\///' | sed 's/".*//' \
+            | sort -u | head -30)
+
+          if [ -n "$NEW_DEPS" ]; then
+            COMMENT="## Lockfile Review Required
+
+          This PR modifies \`package-lock.json\`. New dependency paths detected:
+
+          \`\`\`
+          $NEW_DEPS
+          \`\`\`
+
+          **Please review for unexpected dependencies** — supply chain attacks (like the axios compromise) inject malicious packages via new transitive dependencies."
+
+            gh pr comment "$PR_NUMBER" --body "$COMMENT"
+          fi

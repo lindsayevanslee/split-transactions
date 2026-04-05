@@ -15,10 +15,10 @@ jobs:
   audit-and-fix:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -27,8 +27,8 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
-      - name: Attempt npm audit fix (root)
-        run: npm audit fix --force || true
+      - name: Verify package provenance (root)
+        run: npm audit signatures 2>&1 | tee /tmp/root-signatures.txt || true
 
       - name: Run npm audit (root)
         run: npm audit --json > /tmp/root-audit.json 2>/dev/null || true
@@ -45,9 +45,9 @@ jobs:
         working-directory: functions
         run: npm ci
 
-      - name: Attempt npm audit fix (functions)
+      - name: Verify package provenance (functions)
         working-directory: functions
-        run: npm audit fix --force || true
+        run: npm audit signatures 2>&1 | tee /tmp/functions-signatures.txt || true
 
       - name: Run npm audit (functions)
         working-directory: functions
@@ -60,6 +60,26 @@ jobs:
       - name: Regenerate functions lockfile
         working-directory: functions
         run: npm install --package-lock-only
+
+      # --- Check for invalid package signatures ---
+      - name: Check for signature failures
+        id: signatures
+        run: |
+          FAILURES=""
+          if grep -q "invalid" /tmp/root-signatures.txt 2>/dev/null; then
+            FAILURES="$FAILURES\n$(grep 'invalid' /tmp/root-signatures.txt)"
+          fi
+          if grep -q "invalid" /tmp/functions-signatures.txt 2>/dev/null; then
+            FAILURES="$FAILURES\n$(grep 'invalid' /tmp/functions-signatures.txt)"
+          fi
+          if [ -n "$FAILURES" ]; then
+            echo "has_failures=true" >> $GITHUB_OUTPUT
+            echo "WARNING: Invalid package signatures detected!"
+            printf '%b\n' "$FAILURES"
+          else
+            echo "has_failures=false" >> $GITHUB_OUTPUT
+            echo "All package signatures verified successfully."
+          fi
 
       # --- Create PR if changes exist ---
       - name: Check for changes
@@ -97,7 +117,15 @@ jobs:
 
               formatSection('Root project', root);
               formatSection('Functions project', funcs);
-              lines.push('', '---', 'Please review the overrides before merging to ensure compatibility.');
+
+              // Include signature verification results
+              const rootSigs = readFileSync('/tmp/root-signatures.txt', 'utf8').trim();
+              const funcsSigs = readFileSync('/tmp/functions-signatures.txt', 'utf8').trim();
+              lines.push('', '### Package provenance verification');
+              lines.push('**Root project:** ' + rootSigs.split('\n').pop());
+              lines.push('**Functions project:** ' + funcsSigs.split('\n').pop());
+
+              lines.push('', '---', 'Please review the overrides and lockfile changes before merging to ensure compatibility.');
               console.log(lines.join('\n'));
             "
             echo "EOF"
