@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Parses npm audit JSON output and adds overrides to package.json
- * for vulnerable transitive dependencies.
+ * Parses npm audit JSON output and fixes vulnerable dependencies in package.json.
+ *
+ * - Direct dependencies: bumps the version range in dependencies/devDependencies
+ * - Transitive dependencies: adds an override entry
  *
  * Usage: node add-audit-overrides.js <audit-json-file> <package-json-file>
  *
  * Outputs a JSON summary to stdout:
- *   { added: [...], skipped: [...] }
+ *   { added: [...], bumped: [...], skipped: [...] }
  */
 
 import { readFileSync, writeFileSync } from "fs";
@@ -29,15 +31,11 @@ if (!packageJson.overrides) {
   packageJson.overrides = {};
 }
 
-const added = [];
+const added = []; // overrides added for transitive deps
+const bumped = []; // direct deps bumped in dependencies/devDependencies
 const skipped = [];
 
 for (const [name, vuln] of Object.entries(audit.vulnerabilities || {})) {
-  // Skip direct dependencies — those can be fixed with npm update
-  if (vuln.isDirect) {
-    continue;
-  }
-
   if (!vuln.fixAvailable) {
     skipped.push({
       name,
@@ -63,30 +61,57 @@ for (const [name, vuln] of Object.entries(audit.vulnerabilities || {})) {
     continue;
   }
 
-  const overrideValue = `^${fixVersion}`;
+  if (vuln.isDirect) {
+    // Direct dependency: bump the version range in dependencies or devDependencies
+    const depSection = packageJson.dependencies?.[name]
+      ? "dependencies"
+      : packageJson.devDependencies?.[name]
+        ? "devDependencies"
+        : null;
 
-  // Skip if an override already exists at a sufficient version
-  if (packageJson.overrides[name]) {
-    const existing = packageJson.overrides[name].replace(/^\^/, "");
+    if (!depSection) continue;
+
+    const existing = packageJson[depSection][name].replace(/^[\^~]/, "");
     if (compareVersions(existing, fixVersion) >= 0) {
-      continue; // Existing override is already at or above the fix version
+      continue; // Already at or above the fix version
     }
-  }
 
-  packageJson.overrides[name] = overrideValue;
-  added.push({
-    name,
-    severity: vuln.severity,
-    version: overrideValue,
-    url: getAdvisoryUrl(vuln),
-  });
+    // Pin to exact version — no ranges, to avoid supply chain risk
+    packageJson[depSection][name] = fixVersion;
+    bumped.push({
+      name,
+      severity: vuln.severity,
+      version: fixVersion,
+      section: depSection,
+      url: getAdvisoryUrl(vuln),
+    });
+  } else {
+    // Transitive dependency: add an override pinned to exact version
+    const overrideValue = fixVersion;
+
+    // Skip if an override already exists at a sufficient version
+    if (packageJson.overrides[name]) {
+      const existing = packageJson.overrides[name].replace(/^[\^~]/, "");
+      if (compareVersions(existing, fixVersion) >= 0) {
+        continue;
+      }
+    }
+
+    packageJson.overrides[name] = overrideValue;
+    added.push({
+      name,
+      severity: vuln.severity,
+      version: overrideValue,
+      url: getAdvisoryUrl(vuln),
+    });
+  }
 }
 
 // Write the updated package.json preserving 2-space indent
 writeFileSync(packageFile, JSON.stringify(packageJson, null, 2) + "\n");
 
 // Output summary as JSON for the workflow to use
-const summary = { added, skipped };
+const summary = { added, bumped, skipped };
 console.log(JSON.stringify(summary, null, 2));
 
 // --- Helper functions ---
