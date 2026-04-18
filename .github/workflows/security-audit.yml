@@ -155,6 +155,10 @@ jobs:
             BRANCH=$(gh pr view "$EXISTING_PR" --json headRefName --jq '.headRefName')
           fi
 
+          # Fetch the remote branch if it exists, so force-with-lease has
+          # a valid ref to compare against (prevents "stale info" rejections)
+          git fetch origin "$BRANCH" 2>/dev/null || true
+
           git checkout -B "$BRANCH"
           git add package.json package-lock.json functions/package.json functions/package-lock.json
           git commit -m "Add security audit overrides ($DATE)" || true
