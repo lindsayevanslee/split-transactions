@@ -36,6 +36,14 @@ const bumped = []; // direct deps bumped in dependencies/devDependencies
 const skipped = [];
 
 for (const [name, vuln] of Object.entries(audit.vulnerabilities || {})) {
+  // Cascade reports: this entry has no direct advisory, it's just flagged
+  // because a dependency of it has one. The real advisory will be listed
+  // separately, and fixing that will clear this entry too. Skip silently.
+  const hasDirectAdvisory = vuln.via.some((v) => typeof v === "object");
+  if (!hasDirectAdvisory) {
+    continue;
+  }
+
   if (!vuln.fixAvailable) {
     skipped.push({
       name,
