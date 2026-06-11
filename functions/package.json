@@ -7,7 +7,8 @@
     "protobufjs": "7.5.8",
     "uuid": "14.0.0",
     "fast-xml-builder": "1.1.7",
-    "@protobufjs/utf8": "1.1.1"
+    "@protobufjs/utf8": "1.1.1",
+    "@grpc/grpc-js": "1.14.4"
   },
   "scripts": {
     "build": "tsc",
