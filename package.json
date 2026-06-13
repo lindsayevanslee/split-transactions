@@ -35,7 +35,8 @@
     "brace-expansion": "5.0.6",
     "ws": "8.20.1",
     "react-router": "7.15.0",
-    "@grpc/grpc-js": "1.9.16"
+    "@grpc/grpc-js": "1.9.16",
+    "esbuild": "0.28.1"
   },
   "devDependencies": {
     "@eslint/js": "9.39.2",
