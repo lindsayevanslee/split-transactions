@@ -13,6 +13,7 @@
  */
 
 import { readFileSync, writeFileSync } from "fs";
+import { execFileSync } from "child_process";
 
 const [auditFile, packageFile] = process.argv.slice(2);
 
@@ -54,16 +55,33 @@ for (const [name, vuln] of Object.entries(audit.vulnerabilities || {})) {
     continue;
   }
 
-  // Extract the fix version from advisory ranges in the "via" array.
+  // Extract the candidate fix version from advisory ranges in the "via" array.
   // Advisory ranges look like "<6.14.0" or ">=2.0.0 <2.0.3".
-  // The fix version is the upper bound (the number after "<").
-  const fixVersion = deriveFixVersion(vuln);
+  // The candidate is the upper bound (the number after "<").
+  const candidate = deriveFixVersion(vuln);
+
+  if (!candidate) {
+    skipped.push({
+      name,
+      severity: vuln.severity,
+      reason: "Could not determine fix version from advisory ranges",
+      url: getAdvisoryUrl(vuln),
+    });
+    continue;
+  }
+
+  // The candidate is derived arithmetically from the advisory boundary
+  // (e.g. "<=7.29.0" → "7.29.1"), so it may be a version that was never
+  // published to npm. Pinning to a nonexistent version makes the subsequent
+  // `npm install` abort with ETARGET, failing the whole workflow. Resolve the
+  // candidate to the lowest *published* version that is >= candidate.
+  const fixVersion = resolvePublishedVersion(name, candidate);
 
   if (!fixVersion) {
     skipped.push({
       name,
       severity: vuln.severity,
-      reason: "Could not determine fix version from advisory ranges",
+      reason: `No published version >= ${candidate} found on the npm registry`,
       url: getAdvisoryUrl(vuln),
     });
     continue;
@@ -183,14 +201,57 @@ function bumpPatch(version) {
 }
 
 /**
- * Simple semver comparison. Returns:
- *   positive if a > b, negative if a < b, 0 if equal
+ * Resolves a derived candidate version to the lowest version actually published
+ * on the npm registry that is >= the candidate.
+ *
+ * npm advisory ranges describe the *vulnerable* set, so the boundary we derive
+ * (e.g. "<=7.29.0" → "7.29.1") is not guaranteed to be a real release. Querying
+ * the registry and picking the lowest published version that clears the
+ * vulnerable boundary gives us a version that both exists and is safe.
+ *
+ * Returns the resolved version string, or null if the registry query fails or
+ * no published version satisfies the candidate.
+ */
+function resolvePublishedVersion(name, candidate) {
+  let versions;
+  try {
+    // `npm view <pkg> versions --json` returns a JSON array of all published
+    // versions. execFileSync (not exec) avoids shell injection from the name.
+    const out = execFileSync("npm", ["view", name, "versions", "--json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const parsed = JSON.parse(out);
+    // A package with a single published version returns a string, not an array.
+    versions = Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return null; // Registry unreachable or package not found — skip, don't guess.
+  }
+
+  // Consider only stable releases (skip prereleases like 1.0.0-beta.1) and pick
+  // the lowest one that is >= the candidate.
+  let best = null;
+  for (const v of versions) {
+    if (v.includes("-")) continue; // prerelease — not a safe auto-pin target
+    if (compareVersions(v, candidate) < 0) continue;
+    if (best === null || compareVersions(v, best) < 0) {
+      best = v;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Semver comparison over the major.minor.patch core (prerelease/build metadata
+ * is ignored). Returns positive if a > b, negative if a < b, 0 if equal.
  */
 function compareVersions(a, b) {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
+  const core = (v) => v.split(/[-+]/)[0].split(".").map((n) => Number(n) || 0);
+  const pa = core(a);
+  const pb = core(b);
   for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
   }
   return 0;
 }
