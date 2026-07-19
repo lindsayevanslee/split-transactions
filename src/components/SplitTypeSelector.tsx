@@ -130,7 +130,7 @@ export const SplitTypeSelector: React.FC<SplitTypeSelectorProps> = ({
           </Box>
         );
 
-      case 'shares':
+      case 'shares': {
         const totalShares = splitInputs.reduce((sum, i) => sum + (i.value || 0), 0);
         return (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -165,6 +165,7 @@ export const SplitTypeSelector: React.FC<SplitTypeSelectorProps> = ({
             )}
           </Box>
         );
+      }
 
       default:
         return null;
