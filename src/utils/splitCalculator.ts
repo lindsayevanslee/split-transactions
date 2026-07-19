@@ -124,12 +124,13 @@ export function getDefaultSplitInputs(
         included: true,
       }));
 
-    case 'percentage':
+    case 'percentage': {
       const equalPercent = memberIds.length > 0 ? 100 / memberIds.length : 0;
       return memberIds.map(memberId => ({
         memberId,
         value: equalPercent,
       }));
+    }
 
     case 'exact':
       return memberIds.map(memberId => ({

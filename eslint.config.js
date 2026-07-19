@@ -23,6 +23,13 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      // Allow the destructure-to-omit idiom, e.g.
+      //   const { token, ...withoutToken } = invitation
+      // where the named binding exists only to exclude that key from the rest.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { ignoreRestSiblings: true },
+      ],
     },
   },
 )

@@ -239,6 +239,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
+// The consumer hook is intentionally colocated with its Provider. Splitting it
+// into its own module would satisfy react-refresh but fragment the context API
+// across files for no runtime benefit; the only cost here is losing fast-refresh
+// for this file during development.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useApp = () => {
   const context = useContext(AppContext);
   if (context === undefined) {
