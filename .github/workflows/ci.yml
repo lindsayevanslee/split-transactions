@@ -1,0 +1,53 @@
+name: CI
+run-name: "CI — build, test, and lint"
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# Cancel superseded runs on the same PR/branch so a rapid series of pushes
+# does not queue up redundant jobs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build, test, and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # --- Root project ---
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Lint (root)
+        run: npm run lint
+
+      - name: Build (root)
+        run: npm run build
+
+      - name: Test (root)
+        run: npm run test:run
+
+      # --- Functions project ---
+      # Uses its own lockfile, so install and build it separately.
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Build (functions)
+        working-directory: functions
+        run: npm run build
