@@ -55,18 +55,35 @@ for (const [name, vuln] of Object.entries(audit.vulnerabilities || {})) {
     continue;
   }
 
-  // Extract the candidate fix version from advisory ranges in the "via" array.
-  // Advisory ranges look like "<6.14.0" or ">=2.0.0 <2.0.3".
-  // The candidate is the upper bound (the number after "<").
-  const candidate = deriveFixVersion(vuln);
+  // Plan a fix that stays within the package's current major version. Some
+  // advisories can only be cleared by a major-version bump (e.g. a react-router
+  // advisory fixed in 8.3.0 while the project is on 7.x). A major bump can break
+  // the app, so we never apply one automatically — we record it for a human and
+  // apply the best fix available *within* the current major instead.
+  const currentMajor = currentMajorFor(name, vuln, packageJson);
+  const { candidate, blocked } = planInMajorFix(vuln, currentMajor);
 
-  if (!candidate) {
+  // Flag every advisory that would require crossing a major boundary.
+  for (const b of blocked) {
     skipped.push({
       name,
       severity: vuln.severity,
-      reason: "Could not determine fix version from advisory ranges",
-      url: getAdvisoryUrl(vuln),
+      reason: `Requires major-version upgrade (>= ${b.version}) — outside the patch/minor auto-fix policy; needs human review`,
+      url: b.url,
     });
+  }
+
+  if (!candidate) {
+    // Nothing fixable within the current major. If we didn't already flag a
+    // major-only advisory above, the ranges were simply unparseable.
+    if (blocked.length === 0) {
+      skipped.push({
+        name,
+        severity: vuln.severity,
+        reason: "Could not determine fix version from advisory ranges",
+        url: getAdvisoryUrl(vuln),
+      });
+    }
     continue;
   }
 
@@ -74,14 +91,16 @@ for (const [name, vuln] of Object.entries(audit.vulnerabilities || {})) {
   // (e.g. "<=7.29.0" → "7.29.1"), so it may be a version that was never
   // published to npm. Pinning to a nonexistent version makes the subsequent
   // `npm install` abort with ETARGET, failing the whole workflow. Resolve the
-  // candidate to the lowest *published* version that is >= candidate.
-  const fixVersion = resolvePublishedVersion(name, candidate);
+  // candidate to the lowest *published* version that is >= candidate and,
+  // when the current major is known, does not exceed it.
+  const fixVersion = resolvePublishedVersion(name, candidate, currentMajor);
 
   if (!fixVersion) {
+    const within = currentMajor != null ? ` within v${currentMajor}.x` : "";
     skipped.push({
       name,
       severity: vuln.severity,
-      reason: `No published version >= ${candidate} found on the npm registry`,
+      reason: `No published version >= ${candidate}${within} found on the npm registry`,
       url: getAdvisoryUrl(vuln),
     });
     continue;
@@ -142,31 +161,82 @@ console.log(JSON.stringify(summary, null, 2));
 
 // --- Helper functions ---
 
+/** Major-version number of a version string ("7.18.1" → 7, "^8.3.0" → 8). */
+function majorOf(version) {
+  return Number(String(version).replace(/^[\^~]/, "").split(".")[0]) || 0;
+}
+
 /**
- * Derives the minimum safe version from a vulnerability's advisory ranges.
- * Looks at all "via" entries (advisory objects) and extracts the upper bound
- * of each vulnerable range. Returns the highest fix version needed.
- *
- * Examples:
- *   "<6.14.0"           → "6.14.0"
- *   ">=2.0.0 <2.0.3"    → "2.0.3"
- *   "<=1.3.3"           → bumps patch: "1.3.4"
+ * Determines the major version the package is currently on, so the fix can be
+ * kept within it. Order of preference:
+ *   1. A direct dependency's declared version.
+ *   2. An existing override's version (for transitive deps already pinned).
+ *   3. npm's own recommended fix, when it is a non-major bump.
+ * Returns null when none of these apply — the caller then falls back to legacy
+ * behavior (no major cap) rather than guessing.
  */
-function deriveFixVersion(vuln) {
-  const advisories = vuln.via.filter((v) => typeof v === "object");
-  if (advisories.length === 0) return null;
+function currentMajorFor(name, vuln, packageJson) {
+  const direct =
+    packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name];
+  if (direct) return majorOf(direct);
 
-  let highestFix = null;
+  if (packageJson.overrides?.[name]) return majorOf(packageJson.overrides[name]);
 
-  for (const advisory of advisories) {
-    const range = advisory.range;
-    const version = extractUpperBound(range);
-    if (version && (!highestFix || compareVersions(version, highestFix) > 0)) {
-      highestFix = version;
-    }
+  const fa = vuln.fixAvailable;
+  if (fa && typeof fa === "object" && fa.version && fa.isSemVerMajor === false) {
+    return majorOf(fa.version);
   }
 
-  return highestFix;
+  return null;
+}
+
+/**
+ * Extracts the fix upper bound from every advisory in the "via" array.
+ * Returns [{ version, url }, ...] — one entry per advisory whose range parses.
+ *
+ * Examples of ranges → version:
+ *   "<6.14.0"           → "6.14.0"
+ *   ">=2.0.0 <2.0.3"    → "2.0.3"
+ *   "<=1.3.3"           → "1.3.4" (bumps patch)
+ */
+function advisoryUpperBounds(vuln) {
+  const out = [];
+  for (const advisory of vuln.via.filter((v) => typeof v === "object")) {
+    const version = extractUpperBound(advisory.range);
+    if (version) out.push({ version, url: advisory.url || null });
+  }
+  return out;
+}
+
+/**
+ * Splits a vulnerability's advisory fixes into what can be fixed within the
+ * current major and what cannot.
+ *
+ * Returns:
+ *   candidate — the highest in-major fix version to apply (or null if none), and
+ *   blocked   — advisories whose fix requires a higher major version, which we
+ *               refuse to auto-apply and hand to a human instead.
+ *
+ * When currentMajor is null (unknown), preserves the original behavior: take the
+ * single highest fix across all advisories and block nothing.
+ */
+function planInMajorFix(vuln, currentMajor) {
+  const bounds = advisoryUpperBounds(vuln);
+  if (bounds.length === 0) return { candidate: null, blocked: [] };
+
+  const highest = (list) =>
+    list.reduce(
+      (hi, b) => (!hi || compareVersions(b.version, hi) > 0 ? b.version : hi),
+      null
+    );
+
+  if (currentMajor == null) {
+    return { candidate: highest(bounds), blocked: [] };
+  }
+
+  const inMajor = bounds.filter((b) => majorOf(b.version) <= currentMajor);
+  const blocked = bounds.filter((b) => majorOf(b.version) > currentMajor);
+  return { candidate: highest(inMajor), blocked };
 }
 
 /**
@@ -210,9 +280,11 @@ function bumpPatch(version) {
  * vulnerable boundary gives us a version that both exists and is safe.
  *
  * Returns the resolved version string, or null if the registry query fails or
- * no published version satisfies the candidate.
+ * no published version satisfies the candidate. When maxMajor is provided,
+ * versions above that major are excluded, so the fix never crosses a major
+ * boundary even if the registry has newer majors published.
  */
-function resolvePublishedVersion(name, candidate) {
+function resolvePublishedVersion(name, candidate, maxMajor = null) {
   let versions;
   try {
     // `npm view <pkg> versions --json` returns a JSON array of all published
@@ -233,6 +305,7 @@ function resolvePublishedVersion(name, candidate) {
   let best = null;
   for (const v of versions) {
     if (v.includes("-")) continue; // prerelease — not a safe auto-pin target
+    if (maxMajor != null && majorOf(v) > maxMajor) continue; // stay in-major
     if (compareVersions(v, candidate) < 0) continue;
     if (best === null || compareVersions(v, best) < 0) {
       best = v;
