@@ -106,3 +106,73 @@ describe("add-audit-overrides registry resolution", () => {
     expect(pkg.overrides["@babel/core"]).toBe("7.29.6");
   });
 });
+
+describe("add-audit-overrides major-version cap", () => {
+  // Mirrors the real react-router case: five bundled advisories, four fixed in
+  // 7.18.0 and one (an RSC-mode CSRF) only fixed in 8.3.0. The project is on
+  // react-router 7.x via an existing override, so the fix must stay in v7.
+  const reactRouterAudit = () => ({
+    vulnerabilities: {
+      "react-router": {
+        name: "react-router",
+        severity: "high",
+        isDirect: false,
+        fixAvailable: { name: "react-router-dom", version: "7.18.1", isSemVerMajor: false },
+        via: [
+          { name: "react-router", range: ">=6.0.0 <7.18.0", url: "https://ex/open-redirect" },
+          { name: "react-router", range: ">=7.11.0 <7.18.0", url: "https://ex/xss" },
+          { name: "react-router", range: ">=7.0.0 <7.18.0", url: "https://ex/dos" },
+          { name: "react-router", range: ">=7.12.0 <8.3.0", url: "https://ex/rsc-csrf" },
+        ],
+      },
+    },
+  });
+  const pkgOnV7 = () => ({
+    name: "f",
+    version: "1.0.0",
+    dependencies: { "react-router-dom": "7.12.0" },
+    overrides: { "react-router": "7.15.1" },
+  });
+  const publishedRR = ["7.15.1", "7.18.0", "7.18.1", "8.0.0", "8.3.0"];
+
+  it("applies the highest in-major fix and never crosses to the next major", () => {
+    const { pkg, summary } = run(reactRouterAudit(), pkgOnV7(), publishedRR);
+    // Stays on v7 (7.18.0), does NOT jump to 8.3.0 even though an advisory wants it.
+    expect(pkg.overrides["react-router"]).toBe("7.18.0");
+    expect(summary.added.map((a) => a.version)).toEqual(["7.18.0"]);
+  });
+
+  it("flags the major-only advisory for human review instead of auto-applying it", () => {
+    const { summary } = run(reactRouterAudit(), pkgOnV7(), publishedRR);
+    const majorSkip = summary.skipped.find((s) => /major-version upgrade/i.test(s.reason));
+    expect(majorSkip).toBeDefined();
+    expect(majorSkip.reason).toMatch(/8\.3\.0/);
+    expect(majorSkip.url).toBe("https://ex/rsc-csrf");
+  });
+
+  it("applies nothing when every advisory requires a major bump (all blocked)", () => {
+    const audit = {
+      vulnerabilities: {
+        "react-router": {
+          name: "react-router",
+          severity: "high",
+          isDirect: false,
+          fixAvailable: { name: "react-router", version: "8.3.0", isSemVerMajor: true },
+          via: [{ name: "react-router", range: ">=7.12.0 <8.3.0", url: "https://ex/rsc-csrf" }],
+        },
+      },
+    };
+    const { pkg, summary } = run(audit, pkgOnV7(), publishedRR);
+    expect(pkg.overrides["react-router"]).toBe("7.15.1"); // unchanged
+    expect(summary.added).toHaveLength(0);
+    expect(summary.skipped.some((s) => /major-version upgrade/i.test(s.reason))).toBe(true);
+  });
+
+  it("derives the stay-here major from npm's non-major fixAvailable when no override exists yet", () => {
+    const audit = reactRouterAudit();
+    const pkg = { name: "f", version: "1.0.0", dependencies: {}, overrides: {} };
+    const { pkg: out } = run(audit, pkg, publishedRR);
+    // fixAvailable.version 7.18.1 (isSemVerMajor:false) anchors the cap at v7.
+    expect(out.overrides["react-router"]).toBe("7.18.0");
+  });
+});
