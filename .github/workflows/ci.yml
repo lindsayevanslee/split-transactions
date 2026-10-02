@@ -62,5 +62,5 @@ jobs:
       # files, which otherwise only surface when a deploy is triggered.
       - name: Run actionlint
         run: |
-          pip install actionlint-py==1.7.12
+          pip install actionlint-py==1.7.12.25
           actionlint
