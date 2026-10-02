@@ -51,3 +51,16 @@ jobs:
       - name: Build (functions)
         working-directory: functions
         run: npm run build
+
+  lint-workflows:
+    name: Lint GitHub Actions workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Catches syntax errors, bad expressions, and shell issues in workflow
+      # files, which otherwise only surface when a deploy is triggered.
+      - name: Run actionlint
+        run: |
+          pip install actionlint-py==1.7.12
+          actionlint
