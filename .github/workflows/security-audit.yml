@@ -90,11 +90,11 @@ jobs:
             FAILURES="$FAILURES\n$(grep 'invalid' /tmp/functions-signatures.txt)"
           fi
           if [ -n "$FAILURES" ]; then
-            echo "has_failures=true" >> $GITHUB_OUTPUT
+            echo "has_failures=true" >> "$GITHUB_OUTPUT"
             echo "WARNING: Invalid package signatures detected!"
             printf '%b\n' "$FAILURES"
           else
-            echo "has_failures=false" >> $GITHUB_OUTPUT
+            echo "has_failures=false" >> "$GITHUB_OUTPUT"
             echo "All package signatures verified successfully."
           fi
 
@@ -103,9 +103,9 @@ jobs:
         id: changes
         run: |
           if git diff --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
           else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build PR description
@@ -150,7 +150,7 @@ jobs:
               console.log(lines.join('\n'));
             "
             echo "EOF"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create or update PR
         if: steps.changes.outputs.has_changes == 'true'

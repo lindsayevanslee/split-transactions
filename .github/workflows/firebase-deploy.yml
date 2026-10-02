@@ -1,0 +1,87 @@
+name: Deploy to Firebase
+run-name: "Firebase deploy — ${{ inputs.target }}"
+
+# Manually triggered (Actions tab → "Deploy to Firebase" → Run workflow), so
+# Firestore rules/indexes and Cloud Functions can be deployed without a laptop.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: What to deploy
+        type: choice
+        required: true
+        default: firestore
+        options:
+          - firestore
+          - functions
+          - all
+
+# Never run two Firebase deploys at once; queue instead of cancelling so a
+# deploy that is already in progress is not cut off halfway.
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.target }}
+    # Only deploy what has been merged to main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # The service account key can be stored as a secret on this environment,
+    # which lets you restrict it to the main branch or require approval.
+    environment: firebase
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Resolve deploy targets
+        id: targets
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          case "$TARGET" in
+            firestore) only="firestore:rules,firestore:indexes" ;;
+            functions) only="functions" ;;
+            all)       only="firestore:rules,firestore:indexes,functions" ;;
+            *) echo "Unknown target: $TARGET" >&2; exit 1 ;;
+          esac
+          echo "only=$only" >> "$GITHUB_OUTPUT"
+
+      # Functions are built by firebase.json's predeploy hook, which needs
+      # the functions dependencies installed.
+      - name: Install functions dependencies
+        if: inputs.target != 'firestore'
+        working-directory: functions
+        run: npm ci
+
+      - name: Write service account credentials
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "FIREBASE_SERVICE_ACCOUNT secret is not set." >&2
+            exit 1
+          fi
+          creds="$RUNNER_TEMP/gcp-credentials.json"
+          umask 077
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$creds"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$creds" >> "$GITHUB_ENV"
+
+      - name: Deploy
+        env:
+          ONLY: ${{ steps.targets.outputs.only }}
+        run: npx --yes firebase-tools@15.32.1 deploy --only "$ONLY" --project split-transactions --non-interactive
+
+      - name: Remove service account credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gcp-credentials.json"
