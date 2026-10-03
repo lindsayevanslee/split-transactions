@@ -23,6 +23,10 @@ import {
   Tab,
   Chip,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Link as LinkIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
@@ -33,7 +37,8 @@ import ConfirmationDialog from './ConfirmationDialog';
 import TransactionForm from './TransactionForm';
 import PaymentForm from './PaymentForm';
 import InviteMemberDialog from './InviteMemberDialog';
-import { createInvitation } from '../services/invitations';
+import { createInvitation, cancelMemberInvitations } from '../services/invitations';
+import { getMemberUsage, canRemoveMember } from '../utils/memberUsage';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -75,6 +80,7 @@ const GroupDetails = () => {
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [tabValue, setTabValue] = useState(0);
+  const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
 
   const isOwner = groupId ? isGroupOwner(groupId) : false;
   const canManage = groupId ? canManageMembers(groupId) : false;
@@ -192,22 +198,36 @@ const GroupDetails = () => {
     await updateGroup(groupId, updatedGroup);
   };
 
-  const handleDeleteMember = async (memberId: string) => {
-    if (!group || !canManage) return;
+  const handleRemoveMemberConfirm = async () => {
+    const member = memberToRemove;
+    setMemberToRemove(null);
+    if (!group || !groupId || !canManage || !member) return;
+
+    // Re-check against the latest group data in case it changed while the
+    // dialog was open.
+    if (!canRemoveMember(getMemberUsage(group, member.id))) return;
 
     try {
       const updatedGroup: Group = {
         ...group,
-        members: group.members.filter((m: Member) => m.id !== memberId),
+        members: group.members.filter((m: Member) => m.id !== member.id),
         // Also remove from memberUserIds if they had an account linked
-        memberUserIds: group.memberUserIds.filter(uid => {
-          const member = group.members.find(m => m.id === memberId);
-          return uid !== member?.userId;
-        }),
+        memberUserIds: group.memberUserIds.filter(uid => uid !== member.userId),
       };
-      await updateGroup(groupId!, updatedGroup);
+      await updateGroup(groupId, updatedGroup);
     } catch (err) {
-      console.error('Error deleting member:', err);
+      console.error('Error removing member:', err);
+      alert(`Failed to remove ${member.name}. Please try again.`);
+      return;
+    }
+
+    // Invalidate any outstanding invite link for this member. The Cloud
+    // Function also rejects invitations for members no longer in the group,
+    // so a failure here is logged rather than shown.
+    try {
+      await cancelMemberInvitations(groupId, member.id);
+    } catch (err) {
+      console.error('Error cancelling invitations for removed member:', err);
     }
   };
 
@@ -388,7 +408,7 @@ const GroupDetails = () => {
                         <IconButton
                           edge="end"
                           aria-label="delete"
-                          onClick={() => handleDeleteMember(member.id)}
+                          onClick={() => setMemberToRemove(member)}
                         >
                           <DeleteIcon />
                         </IconButton>
@@ -555,6 +575,48 @@ const GroupDetails = () => {
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
       />
+
+      {memberToRemove && (() => {
+        const usage = getMemberUsage(group, memberToRemove.id);
+        if (canRemoveMember(usage)) {
+          return (
+            <ConfirmationDialog
+              open
+              title="Remove Member"
+              message={`Remove ${memberToRemove.name} from ${group.name}?${
+                memberToRemove.userId ? ' They will lose access to this group.' : ''
+              }`}
+              confirmLabel="Remove"
+              onConfirm={handleRemoveMemberConfirm}
+              onCancel={() => setMemberToRemove(null)}
+            />
+          );
+        }
+        const parts = [
+          usage.transactionCount > 0 &&
+            `${usage.transactionCount} transaction${usage.transactionCount === 1 ? '' : 's'}`,
+          usage.paymentCount > 0 &&
+            `${usage.paymentCount} payment${usage.paymentCount === 1 ? '' : 's'}`,
+        ].filter(Boolean);
+        return (
+          <Dialog open onClose={() => setMemberToRemove(null)}>
+            <DialogTitle>Can't Remove Member</DialogTitle>
+            <DialogContent>
+              <Typography>
+                {memberToRemove.name} is part of {parts.join(' and ')} in this group.
+                Removing them would make the balances incorrect. To remove them,
+                first delete those transactions and payments or edit them so{' '}
+                {memberToRemove.name} isn't involved.
+              </Typography>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setMemberToRemove(null)} variant="contained">
+                OK
+              </Button>
+            </DialogActions>
+          </Dialog>
+        );
+      })()}
     </Container>
   );
 };

@@ -50,6 +50,12 @@ exports.acceptInvitation = (0, https_1.onCall)(async (request) => {
     if (groupData.memberUserIds?.includes(userId)) {
         throw new https_1.HttpsError('already-exists', 'You are already a member of this group');
     }
+    // The invited member must still be in the group and not yet linked to an
+    // account. Otherwise a link for a removed member would still grant access.
+    const invitedMember = groupData.members?.find((member) => member.id === invitationData.memberId);
+    if (!invitedMember || invitedMember.userId) {
+        throw new https_1.HttpsError('failed-precondition', 'Invitation is no longer valid');
+    }
     // Update the member with the user's account info
     const updatedMembers = groupData.members.map((member) => member.id === invitationData.memberId
         ? {

@@ -138,3 +138,16 @@ export async function cancelInvitation(invitationId: string): Promise<void> {
   const invitationRef = doc(db, 'invitations', invitationId);
   await deleteDoc(invitationRef);
 }
+
+// Cancel all pending invitations for a member, e.g. when they are removed
+// from the group, so their invite link stops working.
+export async function cancelMemberInvitations(groupId: string, memberId: string): Promise<void> {
+  const q = query(
+    invitationsCollection,
+    where('groupId', '==', groupId),
+    where('memberId', '==', memberId),
+    where('status', '==', 'pending')
+  );
+  const snapshot = await getDocs(q);
+  await Promise.all(snapshot.docs.map(docSnap => deleteDoc(docSnap.ref)));
+}
