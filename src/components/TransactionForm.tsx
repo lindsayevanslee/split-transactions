@@ -1,8 +1,9 @@
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box } from '@mui/material';
-import { useState, useEffect } from 'react';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, FormHelperText } from '@mui/material';
+import { useState, useEffect, useMemo } from 'react';
 import { Group, Transaction, SplitType } from '../types';
 import { SplitTypeSelector } from './SplitTypeSelector';
 import { SplitInput, calculateSplits, validateSplits, getDefaultSplitInputs } from '../utils/splitCalculator';
+import { OTHER_CATEGORY_VALUE, getCategoryOptions, findCategoryOption, resolveCategory } from '../utils/categories';
 
 interface TransactionFormProps {
   open: boolean;
@@ -15,11 +16,18 @@ interface TransactionFormProps {
 const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: TransactionFormProps) => {
   const [description, setDescription] = useState(transaction?.description || '');
   const [amount, setAmount] = useState(transaction?.amount.toString() || '');
-  const [category, setCategory] = useState(transaction?.category || '');
+  // Selected dropdown value: a category, OTHER_CATEGORY_VALUE, or '' (none yet)
+  const [category, setCategory] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
   const [payerId, setPayerId] = useState(transaction?.payerId || '');
   const [notes, setNotes] = useState(transaction?.notes || '');
   const [splitType, setSplitType] = useState<SplitType>(transaction?.splitType || 'equal');
   const [splitInputs, setSplitInputs] = useState<SplitInput[]>([]);
+
+  const categoryOptions = useMemo(
+    () => getCategoryOptions(group),
+    [group]
+  );
 
   // Initialize all form fields when dialog opens
   useEffect(() => {
@@ -28,7 +36,14 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
         // Edit mode: populate form with transaction data
         setDescription(transaction.description);
         setAmount(transaction.amount.toString());
-        setCategory(transaction.category);
+        const existingOption = findCategoryOption(transaction.category || '', categoryOptions);
+        if (existingOption) {
+          setCategory(existingOption);
+          setCustomCategory('');
+        } else {
+          setCategory(transaction.category?.trim() ? OTHER_CATEGORY_VALUE : '');
+          setCustomCategory(transaction.category || '');
+        }
         setPayerId(transaction.payerId);
         setNotes(transaction.notes || '');
         setSplitType(transaction.splitType);
@@ -66,13 +81,14 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
         setDescription('');
         setAmount('');
         setCategory('');
+        setCustomCategory('');
         setPayerId('');
         setNotes('');
         setSplitType('equal');
         setSplitInputs(getDefaultSplitInputs(group.members.map(m => m.id), 'equal'));
       }
     }
-  }, [open, group.members, transaction]);
+  }, [open, group.members, transaction, categoryOptions]);
 
   // Update split inputs when split type changes (for new transactions only)
   useEffect(() => {
@@ -89,7 +105,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
     onSubmit({
       description,
       amount: numericAmount,
-      category,
+      category: resolveCategory(category, customCategory, categoryOptions),
       payerId,
       splitType,
       splits: calculatedSplits,
@@ -106,6 +122,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
     setDescription('');
     setAmount('');
     setCategory('');
+    setCustomCategory('');
     setPayerId('');
     setNotes('');
     setSplitType('equal');
@@ -120,7 +137,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
     description.trim() !== '' &&
     !isNaN(parseFloat(amount)) &&
     parseFloat(amount) > 0 &&
-    category.trim() !== '' &&
+    resolveCategory(category, customCategory, categoryOptions) !== '' &&
     payerId !== '' &&
     splitValidation.valid;
 
@@ -150,19 +167,41 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
               helperText={isNaN(parseFloat(amount)) || parseFloat(amount) <= 0 ? 'Amount must be greater than 0' : ''}
               inputProps={{ min: 0, step: 0.01 }}
             />
+            <FormControl fullWidth required error={category === ''}>
+              <InputLabel id="transaction-category-label">Category</InputLabel>
+              <Select
+                labelId="transaction-category-label"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                label="Category"
+              >
+                {categoryOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+                <MenuItem value={OTHER_CATEGORY_VALUE}>Other…</MenuItem>
+              </Select>
+              {category === '' && <FormHelperText>Category is required</FormHelperText>}
+            </FormControl>
+          </Box>
+          {category === OTHER_CATEGORY_VALUE && (
             <TextField
               fullWidth
-              label="Category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              label="Custom category"
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
               required
-              error={category.trim() === ''}
-              helperText={category.trim() === '' ? 'Category is required' : ''}
+              autoFocus
+              inputProps={{ maxLength: 50 }}
+              error={customCategory.trim() === ''}
+              helperText={customCategory.trim() === '' ? 'Enter a category name' : ''}
             />
-          </Box>
+          )}
           <FormControl fullWidth required error={payerId === ''}>
-            <InputLabel>Payer</InputLabel>
+            <InputLabel id="transaction-payer-label">Payer</InputLabel>
             <Select
+              labelId="transaction-payer-label"
               value={payerId}
               onChange={(e) => setPayerId(e.target.value)}
               label="Payer"

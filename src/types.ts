@@ -77,6 +77,5 @@ export const DEFAULT_CATEGORIES = [
   'Transportation',
   'Entertainment',
   'Utilities',
-  'Travel',
-  'Other'
+  'Travel'
 ]; 
