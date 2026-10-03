@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -16,12 +16,17 @@ import {
 } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { AuthError } from 'firebase/auth';
+import { getSafeRedirect } from '../utils/redirect';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [searchParams] = useSearchParams();
+  // Set by the invite page so people return to their invitation after
+  // signing in, and land on the sign-up form if they chose "Create Account".
+  const redirectTo = getSafeRedirect(searchParams.get('redirect'));
+  const [isSignUp, setIsSignUp] = useState(searchParams.get('signup') === 'true');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +34,11 @@ const Login = () => {
   const [resetEmail, setResetEmail] = useState('');
   const navigate = useNavigate();
   const { signIn, signUp, resetPassword } = useAuth();
+
+  // fromLogin tells the invite page the user just signed in to accept it, so
+  // it can accept automatically. Navigation state can't be set by a link, so
+  // a shared URL alone never auto-joins anyone to a group.
+  const goToRedirect = () => navigate(redirectTo, { replace: true, state: { fromLogin: true } });
 
   const getErrorMessage = (error: AuthError): string => {
     switch (error.code) {
@@ -61,7 +71,7 @@ const Login = () => {
 
     try {
       await signIn(email, password);
-      navigate('/groups');
+      goToRedirect();
     } catch (err) {
       console.error('Sign in error:', err);
       if (err && typeof err === 'object' && 'code' in err) {
@@ -82,7 +92,7 @@ const Login = () => {
 
     try {
       await signUp(email, password, displayName.trim() || undefined);
-      navigate('/groups');
+      goToRedirect();
     } catch (err) {
       console.error('Sign up error:', err);
       if (err && typeof err === 'object' && 'code' in err) {

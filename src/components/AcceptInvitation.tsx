@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate, Link as RouterLink } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams, useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -16,7 +16,12 @@ import { Invitation } from '../types';
 export const AcceptInvitation: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
+  // True when the user was sent here by the login page after signing in or
+  // creating an account from this invitation.
+  const fromLogin = (location.state as { fromLogin?: boolean } | null)?.fromLogin === true;
+  const autoAcceptAttempted = useRef(false);
 
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,7 +61,7 @@ export const AcceptInvitation: React.FC = () => {
     fetchInvitation();
   }, [token]);
 
-  const handleAccept = async () => {
+  const handleAccept = useCallback(async () => {
     if (!invitation || !user) return;
 
     setAccepting(true);
@@ -79,7 +84,17 @@ export const AcceptInvitation: React.FC = () => {
     } finally {
       setAccepting(false);
     }
-  };
+  }, [invitation, user, navigate]);
+
+  // Accept automatically when the user just signed in or signed up from this
+  // invitation, so they don't have to click the invite link again. If it
+  // fails, the error shows and they can still click "Accept Invitation".
+  useEffect(() => {
+    if (fromLogin && invitation && user && !autoAcceptAttempted.current) {
+      autoAcceptAttempted.current = true;
+      handleAccept();
+    }
+  }, [fromLogin, invitation, user, handleAccept]);
 
   if (loading) {
     return (
