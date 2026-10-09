@@ -1,8 +1,8 @@
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, FormHelperText } from '@mui/material';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Group, Transaction, SplitType } from '../types';
 import { SplitTypeSelector } from './SplitTypeSelector';
-import { SplitInput, calculateSplits, validateSplits, getDefaultSplitInputs } from '../utils/splitCalculator';
+import { SplitInput, calculateSplits, validateSplits, getDefaultSplitInputs, reconcileSplitInputs } from '../utils/splitCalculator';
 import { OTHER_CATEGORY_VALUE, getCategoryOptions, findCategoryOption, resolveCategory } from '../utils/categories';
 
 interface TransactionFormProps {
@@ -29,73 +29,100 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
     [group]
   );
 
+  // Whether the fields have been filled in for the current opening of the
+  // dialog. The group prop changes on every Firestore update (including other
+  // people's edits), and re-initializing then would wipe what was typed.
+  const initialized = useRef(false);
+  // Split inputs per split type, so switching type and back keeps them
+  const savedSplitInputs = useRef<Partial<Record<SplitType, SplitInput[]>>>({});
+
   // Initialize all form fields when dialog opens
   useEffect(() => {
-    if (open) {
-      if (transaction) {
-        // Edit mode: populate form with transaction data
-        setDescription(transaction.description);
-        setAmount(transaction.amount.toString());
-        const existingOption = findCategoryOption(transaction.category || '', categoryOptions);
-        if (existingOption) {
-          setCategory(existingOption);
-          setCustomCategory('');
-        } else {
-          setCategory(transaction.category?.trim() ? OTHER_CATEGORY_VALUE : '');
-          setCustomCategory(transaction.category || '');
-        }
-        setPayerId(transaction.payerId);
-        setNotes(transaction.notes || '');
-        setSplitType(transaction.splitType);
+    if (!open) {
+      initialized.current = false;
+      return;
+    }
 
-        // Reconstruct split inputs from existing splits
-        const inputs: SplitInput[] = group.members.map(member => {
-          const existingSplit = transaction.splits.find(s => s.memberId === member.id);
-          if (transaction.splitType === 'equal') {
-            return {
-              memberId: member.id,
-              value: 0,
-              included: existingSplit ? existingSplit.amount > 0 : true,
-            };
-          } else if (transaction.splitType === 'percentage') {
-            return {
-              memberId: member.id,
-              value: existingSplit?.percentage || 0,
-            };
-          } else if (transaction.splitType === 'shares') {
-            return {
-              memberId: member.id,
-              value: existingSplit?.shares ?? 1,
-            };
-          } else {
-            // exact
-            return {
-              memberId: member.id,
-              value: existingSplit?.amount || 0,
-            };
-          }
-        });
-        setSplitInputs(inputs);
-      } else {
-        // New transaction: reset form to defaults
-        setDescription('');
-        setAmount('');
-        setCategory('');
+    if (initialized.current) {
+      // Group refreshed while open: keep what was entered, only follow
+      // members joining or leaving
+      const memberIds = group.members.map(m => m.id);
+      setSplitInputs(inputs => {
+        const reconciled = reconcileSplitInputs(inputs, memberIds, splitType);
+        if (reconciled !== inputs) savedSplitInputs.current = {};
+        return reconciled;
+      });
+      return;
+    }
+
+    initialized.current = true;
+    savedSplitInputs.current = {};
+    if (transaction) {
+      // Edit mode: populate form with transaction data
+      setDescription(transaction.description);
+      setAmount(transaction.amount.toString());
+      const existingOption = findCategoryOption(transaction.category || '', categoryOptions);
+      if (existingOption) {
+        setCategory(existingOption);
         setCustomCategory('');
-        setPayerId('');
-        setNotes('');
-        setSplitType('equal');
-        setSplitInputs(getDefaultSplitInputs(group.members.map(m => m.id), 'equal'));
+      } else {
+        setCategory(transaction.category?.trim() ? OTHER_CATEGORY_VALUE : '');
+        setCustomCategory(transaction.category || '');
       }
-    }
-  }, [open, group.members, transaction, categoryOptions]);
+      setPayerId(transaction.payerId);
+      setNotes(transaction.notes || '');
+      setSplitType(transaction.splitType);
 
-  // Update split inputs when split type changes (for new transactions only)
-  useEffect(() => {
-    if (open && !transaction) {
-      setSplitInputs(getDefaultSplitInputs(group.members.map(m => m.id), splitType));
+      // Reconstruct split inputs from existing splits
+      const inputs: SplitInput[] = group.members.map(member => {
+        const existingSplit = transaction.splits.find(s => s.memberId === member.id);
+        if (transaction.splitType === 'equal') {
+          return {
+            memberId: member.id,
+            value: 0,
+            included: existingSplit ? existingSplit.amount > 0 : true,
+          };
+        } else if (transaction.splitType === 'percentage') {
+          return {
+            memberId: member.id,
+            value: existingSplit?.percentage || 0,
+          };
+        } else if (transaction.splitType === 'shares') {
+          return {
+            memberId: member.id,
+            value: existingSplit?.shares ?? 1,
+          };
+        } else {
+          // exact
+          return {
+            memberId: member.id,
+            value: existingSplit?.amount || 0,
+          };
+        }
+      });
+      setSplitInputs(inputs);
+    } else {
+      // New transaction: reset form to defaults
+      setDescription('');
+      setAmount('');
+      setCategory('');
+      setCustomCategory('');
+      setPayerId('');
+      setNotes('');
+      setSplitType('equal');
+      setSplitInputs(getDefaultSplitInputs(group.members.map(m => m.id), 'equal'));
     }
-  }, [splitType, open, transaction, group.members]);
+  }, [open, group.members, transaction, categoryOptions, splitType]);
+
+  const handleSplitTypeChange = (newType: SplitType) => {
+    if (newType === splitType) return;
+    savedSplitInputs.current[splitType] = splitInputs;
+    setSplitType(newType);
+    setSplitInputs(
+      savedSplitInputs.current[newType] ??
+        getDefaultSplitInputs(group.members.map(m => m.id), newType)
+    );
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,7 +243,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
 
           <SplitTypeSelector
             splitType={splitType}
-            onSplitTypeChange={setSplitType}
+            onSplitTypeChange={handleSplitTypeChange}
             members={group.members}
             splitInputs={splitInputs}
             onSplitInputsChange={setSplitInputs}
