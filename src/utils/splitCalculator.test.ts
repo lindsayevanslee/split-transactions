@@ -3,6 +3,7 @@ import {
   calculateSplits,
   validateSplits,
   getDefaultSplitInputs,
+  reconcileSplitInputs,
   SplitInput,
 } from './splitCalculator';
 
@@ -344,5 +345,32 @@ describe('getDefaultSplitInputs', () => {
     const inputs = getDefaultSplitInputs([], 'equal');
 
     expect(inputs).toHaveLength(0);
+  });
+});
+
+describe('reconcileSplitInputs', () => {
+  const inputs: SplitInput[] = [
+    { memberId: 'a', value: 60, text: '60' },
+    { memberId: 'b', value: 40 },
+  ];
+
+  it('returns the same array when the members are unchanged', () => {
+    expect(reconcileSplitInputs(inputs, ['a', 'b'], 'percentage')).toBe(inputs);
+  });
+
+  it('keeps entered values and gives a new member 0% so totals are unchanged', () => {
+    expect(reconcileSplitInputs(inputs, ['a', 'b', 'c'], 'percentage')).toEqual([
+      ...inputs,
+      { memberId: 'c', value: 0 },
+    ]);
+  });
+
+  it('drops members who left', () => {
+    expect(reconcileSplitInputs(inputs, ['b'], 'exact')).toEqual([inputs[1]]);
+  });
+
+  it('includes a new member in an equal split and gives them 1 share', () => {
+    expect(reconcileSplitInputs([], ['c'], 'equal')).toEqual([{ memberId: 'c', value: 0, included: true }]);
+    expect(reconcileSplitInputs([], ['c'], 'shares')).toEqual([{ memberId: 'c', value: 1 }]);
   });
 });

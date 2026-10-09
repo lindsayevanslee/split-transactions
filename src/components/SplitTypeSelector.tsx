@@ -40,18 +40,26 @@ export const SplitTypeSelector: React.FC<SplitTypeSelectorProps> = ({
     }
   };
 
-  const handleInputChange = (memberId: string, value: number | boolean) => {
+  const handleInputChange = (memberId: string, value: number | boolean, text?: string) => {
     const newInputs = splitInputs.map(input => {
       if (input.memberId !== memberId) return input;
 
       if (splitType === 'equal') {
         return { ...input, included: value as boolean };
       } else {
-        return { ...input, value: value as number };
+        return { ...input, value: value as number, text };
       }
     });
     onSplitInputsChange(newInputs);
   };
+
+  const handleNumberChange = (memberId: string, text: string) => {
+    handleInputChange(memberId, parseFloat(text) || 0, text);
+  };
+
+  // Show what was typed; deriving it from the number would blank the field
+  // as soon as someone types "0" on the way to "0.50".
+  const displayValue = (input: SplitInput) => input.text ?? (input.value ? String(input.value) : '');
 
   const getMemberName = (memberId: string) => {
     return members.find(m => m.id === memberId)?.name || 'Unknown';
@@ -91,8 +99,8 @@ export const SplitTypeSelector: React.FC<SplitTypeSelectorProps> = ({
                 label={getMemberName(input.memberId)}
                 type="number"
                 size="small"
-                value={input.value || ''}
-                onChange={(e) => handleInputChange(input.memberId, parseFloat(e.target.value) || 0)}
+                value={displayValue(input)}
+                onChange={(e) => handleNumberChange(input.memberId, e.target.value)}
                 InputProps={{
                   endAdornment: <InputAdornment position="end">%</InputAdornment>,
                 }}
@@ -115,8 +123,8 @@ export const SplitTypeSelector: React.FC<SplitTypeSelectorProps> = ({
                 label={getMemberName(input.memberId)}
                 type="number"
                 size="small"
-                value={input.value || ''}
-                onChange={(e) => handleInputChange(input.memberId, parseFloat(e.target.value) || 0)}
+                value={displayValue(input)}
+                onChange={(e) => handleNumberChange(input.memberId, e.target.value)}
                 InputProps={{
                   startAdornment: <InputAdornment position="start">$</InputAdornment>,
                 }}
@@ -144,8 +152,8 @@ export const SplitTypeSelector: React.FC<SplitTypeSelectorProps> = ({
                     label={getMemberName(input.memberId)}
                     type="number"
                     size="small"
-                    value={input.value || ''}
-                    onChange={(e) => handleInputChange(input.memberId, parseFloat(e.target.value) || 0)}
+                    value={displayValue(input)}
+                    onChange={(e) => handleNumberChange(input.memberId, e.target.value)}
                     InputProps={{
                       endAdornment: <InputAdornment position="end">shares</InputAdornment>,
                     }}
