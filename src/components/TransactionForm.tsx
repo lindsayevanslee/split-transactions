@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Group, Transaction, SplitType } from '../types';
 import { SplitTypeSelector } from './SplitTypeSelector';
 import { SplitInput, calculateSplits, validateSplits, getDefaultSplitInputs, reconcileSplitInputs } from '../utils/splitCalculator';
+import { toDateInputValue, fromDateInputValue } from '../utils/dates';
 import { OTHER_CATEGORY_VALUE, getCategoryOptions, findCategoryOption, resolveCategory } from '../utils/categories';
 
 interface TransactionFormProps {
@@ -16,6 +17,8 @@ interface TransactionFormProps {
 const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: TransactionFormProps) => {
   const [description, setDescription] = useState(transaction?.description || '');
   const [amount, setAmount] = useState(transaction?.amount.toString() || '');
+  // "YYYY-MM-DD" in local time, as used by <input type="date">
+  const [date, setDate] = useState(() => toDateInputValue(new Date()));
   // Selected dropdown value: a category, OTHER_CATEGORY_VALUE, or '' (none yet)
   const [category, setCategory] = useState('');
   const [customCategory, setCustomCategory] = useState('');
@@ -61,6 +64,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
       // Edit mode: populate form with transaction data
       setDescription(transaction.description);
       setAmount(transaction.amount.toString());
+      setDate(toDateInputValue(new Date(transaction.date)));
       const existingOption = findCategoryOption(transaction.category || '', categoryOptions);
       if (existingOption) {
         setCategory(existingOption);
@@ -105,6 +109,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
       // New transaction: reset form to defaults
       setDescription('');
       setAmount('');
+      setDate(toDateInputValue(new Date()));
       setCategory('');
       setCustomCategory('');
       setPayerId('');
@@ -124,6 +129,14 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
     );
   };
 
+  // Keep the original timestamp when an edit leaves the day unchanged
+  const transactionDate = (): Date => {
+    if (transaction && toDateInputValue(new Date(transaction.date)) === date) {
+      return transaction.date;
+    }
+    return fromDateInputValue(date) ?? new Date();
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const numericAmount = parseFloat(amount);
@@ -137,7 +150,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
       splitType,
       splits: calculatedSplits,
       notes,
-      date: transaction?.date || new Date(),
+      date: transactionDate(),
       createdAt: transaction?.createdAt || new Date(),
       updatedAt: new Date()
     });
@@ -164,6 +177,7 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
     description.trim() !== '' &&
     !isNaN(parseFloat(amount)) &&
     parseFloat(amount) > 0 &&
+    fromDateInputValue(date) !== null &&
     resolveCategory(category, customCategory, categoryOptions) !== '' &&
     payerId !== '' &&
     splitValidation.valid;
@@ -181,6 +195,17 @@ const TransactionForm = ({ open, onClose, onSubmit, group, transaction }: Transa
             required
             error={description.trim() === ''}
             helperText={description.trim() === '' ? 'Description is required' : ''}
+          />
+          <TextField
+            fullWidth
+            label="Date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+            error={fromDateInputValue(date) === null}
+            helperText={fromDateInputValue(date) === null ? 'Enter a valid date' : ''}
+            slotProps={{ inputLabel: { shrink: true } }}
           />
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField

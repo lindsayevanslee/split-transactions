@@ -222,3 +222,65 @@ describe('TransactionForm keeps what was entered', () => {
     expect(memberField('Alice')).toHaveValue(0.5);
   });
 });
+
+describe('TransactionForm date', () => {
+  const dateField = () => screen.getByLabelText(/^date/i);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const today = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  it("defaults to today's date for a new transaction", () => {
+    render(<TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={makeGroup()} />);
+    expect(dateField()).toHaveValue(today());
+  });
+
+  it('submits the chosen date at local noon', () => {
+    const onSubmit = vi.fn();
+    render(<TransactionForm open onClose={vi.fn()} onSubmit={onSubmit} group={makeGroup()} />);
+
+    fillRequiredFields();
+    fireEvent.click(openSelect(/category/i).getByRole('option', { name: 'Travel' }));
+    fireEvent.change(dateField(), { target: { value: '2026-07-04' } });
+    fireEvent.click(submitButton(/add transaction/i));
+
+    expect(onSubmit.mock.calls[0][0].date).toEqual(new Date(2026, 6, 4, 12));
+  });
+
+  it('cannot be submitted without a date', () => {
+    render(<TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={makeGroup()} />);
+
+    fillRequiredFields();
+    fireEvent.click(openSelect(/category/i).getByRole('option', { name: 'Travel' }));
+    expect(submitButton(/add transaction/i)).toBeEnabled();
+
+    fireEvent.change(dateField(), { target: { value: '' } });
+    expect(submitButton(/add transaction/i)).toBeDisabled();
+  });
+
+  it("shows the transaction's date when editing and keeps its timestamp if unchanged", () => {
+    const original = new Date(2026, 0, 15, 18, 30);
+    const transaction = makeTransaction({ date: original });
+    const onSubmit = vi.fn();
+    render(
+      <TransactionForm open onClose={vi.fn()} onSubmit={onSubmit} group={makeGroup([transaction])} transaction={transaction} />
+    );
+
+    expect(dateField()).toHaveValue('2026-01-15');
+    fireEvent.click(submitButton(/save changes/i));
+    expect(onSubmit.mock.calls[0][0].date).toBe(original);
+  });
+
+  it('saves a new date when editing', () => {
+    const transaction = makeTransaction({ date: new Date(2026, 0, 15, 18, 30) });
+    const onSubmit = vi.fn();
+    render(
+      <TransactionForm open onClose={vi.fn()} onSubmit={onSubmit} group={makeGroup([transaction])} transaction={transaction} />
+    );
+
+    fireEvent.change(dateField(), { target: { value: '2026-01-10' } });
+    fireEvent.click(submitButton(/save changes/i));
+    expect(onSubmit.mock.calls[0][0].date).toEqual(new Date(2026, 0, 10, 12));
+  });
+});
