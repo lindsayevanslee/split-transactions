@@ -6,7 +6,8 @@
  *   - installs must not run dependency install scripts while the app token is
  *     stored in git config,
  *   - the default GITHUB_TOKEN stays read-only (all writes use the app token),
- *   - a failed `npm audit signatures` must fail the run, not just be logged.
+ *   - a failed `npm audit signatures` must fail the run, not just be logged,
+ *   - the app token uses client-id (app-id is deprecated by the action).
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
@@ -47,6 +48,11 @@ describe("security-audit workflow", () => {
     for (const l of installs) {
       expect(l).toContain("--ignore-scripts");
     }
+  });
+
+  it("authenticates the audit app with client-id, not the deprecated app-id", () => {
+    expect(WORKFLOW).toContain("client-id: ${{ secrets.AUDIT_APP_CLIENT_ID }}");
+    expect(WORKFLOW).not.toMatch(/^\s+app-id:/m);
   });
 
   it("keeps the default GITHUB_TOKEN read-only", () => {
