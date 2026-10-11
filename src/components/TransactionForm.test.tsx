@@ -128,3 +128,97 @@ describe('TransactionForm category', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ category: 'Food & Dining' }));
   });
 });
+
+describe('TransactionForm keeps what was entered', () => {
+  const memberField = (name: string) => screen.getByRole('spinbutton', { name: new RegExp(`^${name}`) });
+
+  it('does not reset the form when the group is refreshed while it is open', () => {
+    // A Firestore snapshot (e.g. someone else adding a transaction) hands the
+    // form a new group object with new arrays but the same members.
+    const group = makeGroup();
+    const { rerender } = render(
+      <TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={group} />
+    );
+
+    fireEvent.change(screen.getByLabelText(/description/i), { target: { value: 'Groceries' } });
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: '42' } });
+    fireEvent.click(screen.getByRole('button', { name: /exact/i }));
+    fireEvent.change(memberField('Alice'), { target: { value: '40' } });
+
+    const refreshed = {
+      ...group,
+      members: group.members.map(m => ({ ...m })),
+      transactions: [makeTransaction({ category: 'Rent' })],
+    };
+    rerender(<TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={refreshed} />);
+
+    expect(screen.getByLabelText(/description/i)).toHaveValue('Groceries');
+    expect(screen.getByLabelText(/amount/i)).toHaveValue(42);
+    expect(memberField('Alice')).toHaveValue(40);
+  });
+
+  it('adds a member who joins while the form is open, keeping entered splits', () => {
+    const group = makeGroup();
+    const { rerender } = render(
+      <TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={group} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /exact/i }));
+    fireEvent.change(memberField('Alice'), { target: { value: '5' } });
+
+    const withCarol = {
+      ...group,
+      members: [...group.members, { id: '3', name: 'Carol', balance: 0, status: 'placeholder' as const }],
+    };
+    rerender(<TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={withCarol} />);
+
+    expect(memberField('Alice')).toHaveValue(5);
+    expect(memberField('Carol')).toBeInTheDocument();
+  });
+
+  it('keeps split values when switching split type and back', () => {
+    render(<TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={makeGroup()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /exact/i }));
+    fireEvent.change(memberField('Alice'), { target: { value: '12.5' } });
+    fireEvent.change(memberField('Bob'), { target: { value: '7.5' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /%/ }));
+    fireEvent.click(screen.getByRole('button', { name: /exact/i }));
+
+    expect(memberField('Alice')).toHaveValue(12.5);
+    expect(memberField('Bob')).toHaveValue(7.5);
+  });
+
+  it('keeps who is included in an equal split when switching type and back', () => {
+    render(<TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={makeGroup()} />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Bob' }));
+    fireEvent.click(screen.getByRole('button', { name: /shares/i }));
+    fireEvent.click(screen.getByRole('button', { name: /equal/i }));
+
+    expect(screen.getByRole('checkbox', { name: 'Bob' })).not.toBeChecked();
+  });
+
+  it('starts a new split type from its defaults when editing a transaction', () => {
+    // An equal-split transaction switched to % should start at 50/50, not
+    // reinterpret the equal-split inputs (all 0) as percentages.
+    const transaction = makeTransaction();
+    render(
+      <TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={makeGroup([transaction])} transaction={transaction} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /%/ }));
+    expect(memberField('Alice')).toHaveValue(50);
+    expect(memberField('Bob')).toHaveValue(50);
+  });
+
+  it('does not clear a split field while a value like 0.50 is being typed', () => {
+    render(<TransactionForm open onClose={vi.fn()} onSubmit={vi.fn()} group={makeGroup()} />);
+    fireEvent.click(screen.getByRole('button', { name: /exact/i }));
+
+    fireEvent.change(memberField('Alice'), { target: { value: '0' } });
+    expect(memberField('Alice')).toHaveValue(0);
+    fireEvent.change(memberField('Alice'), { target: { value: '0.5' } });
+    expect(memberField('Alice')).toHaveValue(0.5);
+  });
+});

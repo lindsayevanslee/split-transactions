@@ -4,6 +4,7 @@ export interface SplitInput {
   memberId: string;
   value: number;  // percentage, exact amount, or shares count (ignored for equal)
   included?: boolean;  // for equal splits - whether member is included
+  text?: string;  // what was typed, so partial input like "0." isn't wiped out
 }
 
 export function calculateSplits(
@@ -147,4 +148,28 @@ export function getDefaultSplitInputs(
     default:
       return [];
   }
+}
+
+/**
+ * Matches split inputs to the current member list, keeping what was entered
+ * for members still in the group. Members who joined get a neutral default
+ * (included for equal splits, 0 otherwise, 1 share for shares). Returns the
+ * same array when the members haven't changed.
+ */
+export function reconcileSplitInputs(
+  inputs: SplitInput[],
+  memberIds: string[],
+  splitType: SplitType
+): SplitInput[] {
+  const unchanged =
+    inputs.length === memberIds.length &&
+    inputs.every((input, i) => input.memberId === memberIds[i]);
+  if (unchanged) return inputs;
+
+  return memberIds.map(memberId => {
+    const existing = inputs.find(input => input.memberId === memberId);
+    if (existing) return existing;
+    if (splitType === 'percentage') return { memberId, value: 0 };
+    return getDefaultSplitInputs([memberId], splitType)[0];
+  });
 }
