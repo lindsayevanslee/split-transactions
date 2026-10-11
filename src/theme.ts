@@ -256,6 +256,21 @@ const theme = createTheme({
         },
       },
     },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: {
+          // A floated outlined label normally sits in a gap cut into the
+          // border, but Safari doesn't always draw that gap, leaving the
+          // border through the text. A background behind the label hides the
+          // border in every browser.
+          '&.MuiInputLabel-outlined.MuiInputLabel-shrink': {
+            backgroundColor: '#faf6eb',
+            padding: '0 4px',
+            marginLeft: '-4px',
+          },
+        },
+      },
+    },
     MuiDialog: {
       styleOverrides: {
         paper: {
