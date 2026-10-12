@@ -355,74 +355,27 @@ const GroupDetails = () => {
             <Chip label="Member" size="small" variant="outlined" />
           )}
         </Box>
-        {canManage && (
-          <Button variant="contained" onClick={() => setMemberDialogOpen(true)}>
-            Add Member
-          </Button>
-        )}
       </Box>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
+        {/* Scrolls sideways when four tabs don't fit (e.g. on a phone) */}
+        <Tabs
+          value={tabValue}
+          onChange={(_, newValue) => setTabValue(newValue)}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+        >
           <Tab label="Summary" />
           <Tab label="Transactions" />
           <Tab label="Payments" />
+          <Tab label="Members" />
         </Tabs>
       </Box>
 
       <TabPanel value={tabValue} index={0}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-          <Box>
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Members
-              </Typography>
-              <List>
-                {group.members.map((member) => (
-                  <ListItem
-                    key={member.id}
-                    sx={{ mb: 1, borderRadius: 1, bgcolor: 'background.paper' }}
-                  >
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {member.name}
-                          {getMemberStatusChip(member)}
-                        </Box>
-                      }
-                    />
-                    <ListItemSecondaryAction>
-                      {canManage && (member.status === 'placeholder' || member.status === 'invited') && (
-                        <Tooltip title={member.status === 'placeholder' ? 'Generate invite link' : 'Copy invite link'}>
-                          <IconButton
-                            edge="end"
-                            aria-label="invite"
-                            onClick={() => handleGenerateInviteLink(member)}
-                            sx={{ mr: 1 }}
-                          >
-                            <LinkIcon />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      {canManage && member.userId !== user?.uid && (
-                        <IconButton
-                          edge="end"
-                          aria-label="delete"
-                          onClick={() => setMemberToRemove(member)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      )}
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                ))}
-              </List>
-            </Box>
-          </Box>
-
-          <Box>
-            <TransactionSummary group={group} />
-          </Box>
+        <Box sx={{ maxWidth: 720 }}>
+          <TransactionSummary group={group} />
         </Box>
       </TabPanel>
 
@@ -536,6 +489,59 @@ const GroupDetails = () => {
             </TableBody>
           </Table>
         </TableContainer>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={3}>
+        {canManage && (
+          <Box sx={{ mb: 3 }}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMemberDialogOpen(true)}>
+              Add Member
+            </Button>
+          </Box>
+        )}
+        <Typography variant="h6" gutterBottom>
+          Members
+        </Typography>
+        <List>
+          {group.members.map((member) => (
+            <ListItem
+              key={member.id}
+              sx={{ mb: 1, borderRadius: 1, bgcolor: 'background.paper' }}
+            >
+              <ListItemText
+                primary={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {member.name}
+                    {getMemberStatusChip(member)}
+                  </Box>
+                }
+              />
+              <ListItemSecondaryAction>
+                {canManage && (member.status === 'placeholder' || member.status === 'invited') && (
+                  <Tooltip title={member.status === 'placeholder' ? 'Generate invite link' : 'Copy invite link'}>
+                    <IconButton
+                      edge="end"
+                      aria-label="invite"
+                      onClick={() => handleGenerateInviteLink(member)}
+                      sx={{ mr: 1 }}
+                    >
+                      <LinkIcon />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                {canManage && member.userId !== user?.uid && (
+                  <IconButton
+                    edge="end"
+                    aria-label="delete"
+                    onClick={() => setMemberToRemove(member)}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                )}
+              </ListItemSecondaryAction>
+            </ListItem>
+          ))}
+        </List>
       </TabPanel>
 
       <InviteMemberDialog
