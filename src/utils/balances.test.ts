@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateBalances, calculateDebts, roundBalancesToCents } from './balances';
+import { calculateBalances, calculateDebts, calculateBreakdown, calculateDirectDebts, roundBalancesToCents } from './balances';
 import { calculateSplits, getDefaultSplitInputs } from './splitCalculator';
 import { Member, Payment, SplitType, Transaction } from '../types';
 
@@ -95,6 +95,18 @@ describe('balances and settlements on random groups', () => {
     return { members, transactions, payments };
   };
 
+  it('the breakdown (paid − share + sent − received) matches every balance', () => {
+    for (let run = 0; run < 1000; run++) {
+      const group = randomGroup();
+      const balances = calculateBalances(group);
+      const breakdown = calculateBreakdown(group);
+      for (const [id, balance] of balances) {
+        const b = breakdown.get(id)!;
+        expect(b.paid - b.share + b.sent - b.received).toBeCloseTo(balance, 6);
+      }
+    }
+  });
+
   it('balances always add up to zero', () => {
     for (let run = 0; run < 2000; run++) {
       const total = [...calculateBalances(randomGroup()).values()].reduce((a, b) => a + b, 0);
@@ -150,5 +162,43 @@ describe('roundBalancesToCents', () => {
   it('leaves a real imbalance visible rather than spreading it around', () => {
     const rounded = roundBalancesToCents(new Map([['A', 10], ['B', -5]]));
     expect([...rounded.values()]).toEqual([10, -5]);
+  });
+});
+
+describe('calculateDirectDebts', () => {
+  const members = ['A', 'B', 'C'].map(member);
+
+  it('makes each person in a split owe the payer their share, netting each pair', () => {
+    const group = { members, payments: [pay('B', 'A', 10)], transactions: [
+      tx('A', 90, [{ memberId: 'A', amount: 30 }, { memberId: 'B', amount: 30 }, { memberId: 'C', amount: 30 }]),
+      tx('B', 20, [{ memberId: 'A', amount: 10 }, { memberId: 'B', amount: 10 }]),
+    ] };
+    const debts = calculateDirectDebts(group).map(({ from, to, amount, items }) => ({ from, to, amount, items: items.map(i => i.amount) }));
+    // B owes A: 30 (B's share) − 10 (A's share of B's expense) − 10 (B paid A) = 10
+    expect(debts).toEqual([
+      { from: 'C', to: 'A', amount: 30, items: [30] },
+      { from: 'B', to: 'A', amount: 10, items: expect.arrayContaining([30, -10, -10]) },
+    ]);
+  });
+
+  it('nets to the same total per person as their balance (within rounding)', () => {
+    let seed = 7;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    for (let run = 0; run < 500; run++) {
+      const ids = ['A', 'B', 'C', 'D'];
+      const transactions = Array.from({ length: 1 + Math.floor(rand() * 8) }, () => {
+        const amount = Math.round(rand() * 30000) / 100 + 0.01;
+        const splits = calculateSplits(amount, 'equal', getDefaultSplitInputs(ids, 'equal'));
+        return tx(ids[Math.floor(rand() * 4)], amount, splits);
+      });
+      const group = { members: ids.map(member), transactions, payments: [pay('A', 'B', 5)] };
+      const balances = calculateBalances(group);
+      const debts = calculateDirectDebts(group);
+      for (const id of ids) {
+        const net = debts.reduce((sum, d) => sum + (d.to === id ? d.amount : 0) - (d.from === id ? d.amount : 0), 0);
+        // Each pair is rounded to the cent, so allow up to a cent per pair (3 pairs per person)
+        expect(Math.abs(net - balances.get(id)!)).toBeLessThanOrEqual(0.03 + 1e-9);
+      }
+    }
   });
 });

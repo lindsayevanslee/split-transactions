@@ -112,3 +112,121 @@ export function calculateDebts(
 
   return debts;
 }
+
+export interface MemberBreakdown {
+  memberId: string;
+  paid: number;      // total of transactions they paid for
+  share: number;     // total of their shares across transactions
+  sent: number;      // payments they made to others
+  received: number;  // payments others made to them
+}
+
+/**
+ * How each member's balance is made up, so people can check it:
+ * balance = paid − share + sent − received. Gives the same balances as
+ * calculateBalances (before rounding).
+ */
+export function calculateBreakdown(
+  group: Pick<Group, 'members' | 'transactions' | 'payments'>
+): Map<string, MemberBreakdown> {
+  const breakdown = new Map<string, MemberBreakdown>();
+  const get = (memberId: string) => {
+    let entry = breakdown.get(memberId);
+    if (!entry) {
+      entry = { memberId, paid: 0, share: 0, sent: 0, received: 0 };
+      breakdown.set(memberId, entry);
+    }
+    return entry;
+  };
+  group.members?.forEach(member => get(member.id));
+
+  group.transactions?.forEach(transaction => {
+    get(transaction.payerId).paid += transaction.amount;
+    transaction.splits?.forEach(split => {
+      get(split.memberId).share += split.amount;
+    });
+  });
+
+  group.payments?.forEach(payment => {
+    const from = get(payment.fromId);
+    const to = get(payment.toId);
+    from.sent += payment.amount;
+    to.received += payment.amount;
+  });
+
+  return breakdown;
+}
+
+export interface DirectDebtItem {
+  id: string;
+  date: Date;
+  label: string;   // names whose share or payment it is, e.g. "Groceries (Carol's share)"
+  amount: number;  // positive increases what `from` owes `to`; negative reduces it
+}
+
+export interface DirectDebt extends Debt {
+  items: DirectDebtItem[];
+}
+
+/**
+ * Who owes whom without simplification, traced to transactions: everyone in
+ * a split owes the payer their share, and a payment reduces what the payer
+ * owed the recipient. Debts between the same two people are netted, so each
+ * pair appears at most once.
+ */
+export function calculateDirectDebts(
+  group: Pick<Group, 'members' | 'transactions' | 'payments'>
+): DirectDebt[] {
+  const name = (id: string) => group.members.find(m => m.id === id)?.name || 'Unknown';
+  // Keyed by the pair in a fixed order (a < b); net > 0 means a owes b
+  const pairs = new Map<string, { a: string; b: string; net: number; items: DirectDebtItem[] }>();
+
+  const add = (debtor: string, creditor: string, amount: number, item: Omit<DirectDebtItem, 'amount'>) => {
+    if (debtor === creditor || amount === 0) return;
+    const [a, b] = debtor < creditor ? [debtor, creditor] : [creditor, debtor];
+    const key = `${a}|${b}`;
+    let pair = pairs.get(key);
+    if (!pair) {
+      pair = { a, b, net: 0, items: [] };
+      pairs.set(key, pair);
+    }
+    const signedAmount = debtor === a ? amount : -amount;  // relative to "a owes b"
+    pair.net += signedAmount;
+    pair.items.push({ ...item, amount: signedAmount });
+  };
+
+  group.transactions?.forEach(transaction => {
+    transaction.splits?.forEach(split => {
+      add(split.memberId, transaction.payerId, split.amount, {
+        id: transaction.id,
+        date: new Date(transaction.date),
+        label: `${transaction.description} (${name(split.memberId)}'s share)`,
+      });
+    });
+  });
+
+  group.payments?.forEach(payment => {
+    // Paying someone reduces what you owe them
+    add(payment.fromId, payment.toId, -payment.amount, {
+      id: payment.id,
+      date: new Date(payment.date),
+      label: `${name(payment.fromId)} paid ${name(payment.toId)}`,
+    });
+  });
+
+  const debts: DirectDebt[] = [];
+  pairs.forEach(pair => {
+    const cents = Math.round(Math.abs(pair.net) * 100);
+    if (cents === 0) return;
+    const aOwes = pair.net > 0;
+    debts.push({
+      from: aOwes ? pair.a : pair.b,
+      to: aOwes ? pair.b : pair.a,
+      amount: cents / 100,
+      items: pair.items
+        .map(item => ({ ...item, amount: aOwes ? item.amount : -item.amount }))
+        .sort((x, y) => y.date.getTime() - x.date.getTime()),
+    });
+  });
+  return debts.sort((x, y) => y.amount - x.amount);
+}
