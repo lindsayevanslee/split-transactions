@@ -3,6 +3,7 @@ import { Box, ButtonBase, Collapse, Typography } from '@mui/material';
 import { Group } from '../types';
 import { Debt, DirectDebt, MemberBreakdown, calculateBreakdown } from '../utils/balances';
 import DebtItemList from './DebtItemList';
+import { formatCurrency, signedCurrency } from '../utils/money';
 
 interface BalanceBreakdownProps {
   group: Group;
@@ -12,22 +13,14 @@ interface BalanceBreakdownProps {
   simplified: boolean;
 }
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-// Shows "+$5.00" / "−$5.00" so each line reads as a step in the sum
-const signed = (amount: number) => {
-  const cents = Math.round(amount * 100);
-  if (cents === 0) return formatCurrency(0);
-  return `${cents > 0 ? '+' : '−'}${formatCurrency(Math.abs(cents) / 100)}`;
-};
+const signed = signedCurrency;
 
 const mono = { fontFamily: '"IBM Plex Mono", monospace', fontVariantNumeric: 'tabular-nums' };
 
-const credit = '#1a472a';
-const debit = '#8b0000';
+export const credit = '#1a472a';
+export const debit = '#8b0000';
 
-function EquationRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+export function EquationRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: 0.25, ...(strong && { borderTop: '1px solid', borderColor: 'divider', mt: 0.5, pt: 0.75 }) }}>
       <Typography variant="body2" sx={{ fontWeight: strong ? 700 : 400 }}>{label}</Typography>
@@ -120,26 +113,6 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-function CheckCard({ title, explanation, rows, result, ok }: {
-  title: string;
-  explanation: string;
-  rows: { label: string; value: string }[];
-  result: string;
-  ok: boolean;
-}) {
-  return (
-    <Box>
-      <Typography variant="body2" sx={{ fontWeight: 700 }}>{title}</Typography>
-      <Typography variant="body2" sx={{ color: 'text.secondary', mb: 0.5 }}>{explanation}</Typography>
-      {rows.map(row => <EquationRow key={row.label} label={row.label} value={row.value} />)}
-      <EquationRow label="Should be $0.00" value={result} strong />
-      <Typography variant="body2" sx={{ color: ok ? credit : debit, fontWeight: 600 }}>
-        {ok ? '✓ Checks out' : '✗ Doesn’t add up. A transaction’s split may not match its amount.'}
-      </Typography>
-    </Box>
-  );
-}
-
 /**
  * Each member's balance as a bar either side of zero (right and green: the
  * group owes them; left and red: they owe the group). Tapping a member shows
@@ -152,14 +125,6 @@ const BalanceBreakdown = ({ group, balances, directDebts, settlements, simplifie
 
   const members = [...group.members].sort((a, b) => (balances.get(b.id) || 0) - (balances.get(a.id) || 0));
   const maxAbs = Math.max(0.01, ...members.map(m => Math.abs(balances.get(m.id) || 0)));
-
-  const totals = [...breakdown.values()].reduce(
-    (t, b) => ({ paid: t.paid + b.paid, share: t.share + b.share }),
-    { paid: 0, share: 0 }
-  );
-  const balanceTotal = [...balances.values()].reduce((sum, b) => sum + Math.round(b * 100), 0) / 100;
-  const sharesMatch = Math.abs(totals.paid - totals.share) < 0.005 * Math.max(1, group.transactions.length);
-  const balancesZero = balanceTotal === 0;
 
   return (
     <Box>
@@ -235,31 +200,6 @@ const BalanceBreakdown = ({ group, balances, directDebts, settlements, simplifie
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }} aria-hidden>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>← owes</Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>is owed →</Typography>
-      </Box>
-
-      <Box sx={{ mt: 2, p: 1.5, border: '1px dashed', borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Typography variant="caption" sx={{ textTransform: 'uppercase', letterSpacing: '0.08em', color: 'text.secondary' }}>
-          Checks
-        </Typography>
-
-        <CheckCard
-          title="1. Everything paid was shared out"
-          explanation="Every dollar someone paid should be split among the group, so total paid minus total shares should be $0.00."
-          rows={[
-            { label: 'Total paid for expenses', value: formatCurrency(totals.paid) },
-            { label: "Minus everyone's shares", value: `−${formatCurrency(totals.share)}` },
-          ]}
-          result={formatCurrency(Math.round((totals.paid - totals.share) * 100) / 100)}
-          ok={sharesMatch}
-        />
-
-        <CheckCard
-          title="2. Balances cancel out"
-          explanation="What some people are owed should exactly match what others owe, so all balances added together should be $0.00. Payments between members move money from one balance to another, so they don't change the total."
-          rows={members.map(m => ({ label: m.name, value: signed(balances.get(m.id) || 0) }))}
-          result={formatCurrency(balanceTotal)}
-          ok={balancesZero}
-        />
       </Box>
     </Box>
   );

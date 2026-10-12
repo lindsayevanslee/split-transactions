@@ -374,9 +374,7 @@ const GroupDetails = () => {
       </Box>
 
       <TabPanel value={tabValue} index={0}>
-        <Box sx={{ maxWidth: 720 }}>
-          <TransactionSummary group={group} />
-        </Box>
+        <TransactionSummary group={group} />
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>

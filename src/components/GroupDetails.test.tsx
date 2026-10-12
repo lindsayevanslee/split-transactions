@@ -47,10 +47,14 @@ describe('GroupDetails tabs', () => {
     canManage = true;
   });
 
-  it('shows only the Account Summary on the Summary tab', () => {
+  it('shows only the summary sections on the Summary tab', () => {
     renderGroup();
     const panel = screen.getByRole('tabpanel');
-    expect(within(panel).getByText('Account Summary')).toBeInTheDocument();
+    // Three sections, each a heading over its own box
+    for (const name of ['Settlements Due', 'Ledger Balances', 'Checks']) {
+      expect(within(panel).getByRole('heading', { name })).toBeInTheDocument();
+    }
+    expect(within(panel).queryByText('Account Summary')).not.toBeInTheDocument();
     expect(within(panel).queryByRole('heading', { name: 'Members' })).not.toBeInTheDocument();
     expect(within(panel).queryByRole('button', { name: /add member/i })).not.toBeInTheDocument();
   });
