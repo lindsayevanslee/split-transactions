@@ -133,6 +133,7 @@ jobs:
             echo "body<<EOF"
             node --input-type=module -e "
               import { readFileSync } from 'fs';
+              import { signatureSummary } from './.github/scripts/signature-summary.js';
               const root = JSON.parse(readFileSync('/tmp/root-summary.json', 'utf8'));
               const funcs = JSON.parse(readFileSync('/tmp/functions-summary.json', 'utf8'));
 
@@ -157,11 +158,11 @@ jobs:
               formatSection('Functions project', funcs);
 
               // Include signature verification results
-              const rootSigs = readFileSync('/tmp/root-signatures.txt', 'utf8').trim();
-              const funcsSigs = readFileSync('/tmp/functions-signatures.txt', 'utf8').trim();
+              const rootSigs = readFileSync('/tmp/root-signatures.txt', 'utf8');
+              const funcsSigs = readFileSync('/tmp/functions-signatures.txt', 'utf8');
               lines.push('', '### Package provenance verification');
-              lines.push('**Root project:** ' + rootSigs.split('\n').pop());
-              lines.push('**Functions project:** ' + funcsSigs.split('\n').pop());
+              lines.push('**Root project:** ' + signatureSummary(rootSigs));
+              lines.push('**Functions project:** ' + signatureSummary(funcsSigs));
 
               lines.push('', '---', 'Please review the overrides and lockfile changes before merging to ensure compatibility.');
               console.log(lines.join('\n'));
