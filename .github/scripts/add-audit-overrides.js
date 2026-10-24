@@ -4,7 +4,10 @@
  * Parses npm audit JSON output and fixes vulnerable dependencies in package.json.
  *
  * - Direct dependencies: bumps the version range in dependencies/devDependencies
- * - Transitive dependencies: adds an override entry
+ * - Transitive dependencies: adds an override entry. When package-lock.json
+ *   sits next to package.json, the override is scoped to the version line of
+ *   each vulnerable copy (e.g. "minimatch@^9": "9.0.7"), so copies on other
+ *   lines that their parents need (eslint's minimatch 3.x) are left alone.
  *
  * Usage: node add-audit-overrides.js <audit-json-file> <package-json-file>
  *
@@ -12,8 +15,10 @@
  *   { added: [...], bumped: [...], skipped: [...] }
  */
 
-import { readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { execFileSync } from "child_process";
+import { dirname, join } from "path";
+import semver from "semver";
 
 const [auditFile, packageFile] = process.argv.slice(2);
 
@@ -31,6 +36,13 @@ const packageJson = JSON.parse(packageJsonRaw);
 if (!packageJson.overrides) {
   packageJson.overrides = {};
 }
+
+// The lockfile tells us which version each vulnerable copy is on. Without it
+// we fall back to a single unscoped override per package.
+const lockFile = join(dirname(packageFile), "package-lock.json");
+const lockPackages = existsSync(lockFile)
+  ? JSON.parse(readFileSync(lockFile, "utf8")).packages || {}
+  : null;
 
 const added = []; // overrides added for transitive deps
 const bumped = []; // direct deps bumped in dependencies/devDependencies
@@ -53,6 +65,16 @@ for (const [name, vuln] of Object.entries(audit.vulnerabilities || {})) {
       url: getAdvisoryUrl(vuln),
     });
     continue;
+  }
+
+  // Transitive dependency with no existing unscoped override: write one
+  // override per installed version line, each capped to that line.
+  if (!vuln.isDirect && !packageJson.overrides[name]) {
+    const lines = installedLines(vuln);
+    if (lines.length > 0) {
+      for (const line of lines) addScopedOverride(name, vuln, line);
+      continue;
+    }
   }
 
   // Plan a fix that stays within the package's current major version. Some
@@ -160,6 +182,98 @@ const summary = { added, bumped, skipped };
 console.log(JSON.stringify(summary, null, 2));
 
 // --- Helper functions ---
+
+/**
+ * The caret range line a version belongs to: "9.0.3" → "9", "0.25.4" → "0.25".
+ * For 0.x versions npm's ^ locks the minor, so 0.25 and 0.28 are different
+ * lines (vite asks for esbuild ^0.25.0, which 0.28.x does not satisfy).
+ */
+function lineOf(version) {
+  const v = semver.parse(version);
+  if (!v) return null;
+  return v.major > 0 ? String(v.major) : `0.${v.minor}`;
+}
+
+/** Distinct version lines of the vulnerable copies npm audit reported. */
+function installedLines(vuln) {
+  if (!lockPackages) return [];
+  const lines = new Set();
+  for (const node of vuln.nodes || []) {
+    const line = lineOf(lockPackages[node]?.version);
+    if (line) lines.add(line);
+  }
+  return [...lines];
+}
+
+/**
+ * Adds (or raises) the override `name@^line` to the lowest published version
+ * on that line that clears every advisory affecting the line. Advisories only
+ * fixed on a later line are reported for human review instead.
+ */
+function addScopedOverride(name, vuln, line) {
+  const lineRange = `^${line}`;
+  const key = `${name}@${lineRange}`;
+  const relevant = vuln.via.filter(
+    (v) => typeof v === "object" && safeIntersects(v.range, lineRange)
+  );
+
+  let candidate = null;
+  for (const advisory of relevant) {
+    const version = extractUpperBound(advisory.range);
+    if (!version) continue;
+    if (semver.satisfies(version, lineRange)) {
+      if (!candidate || semver.gt(version, candidate)) candidate = version;
+    } else {
+      skipped.push({
+        name: key,
+        severity: vuln.severity,
+        reason: `Requires upgrade beyond ${lineRange} (>= ${version}) — outside the patch/minor auto-fix policy; needs human review`,
+        url: advisory.url || null,
+      });
+    }
+  }
+  if (!candidate) {
+    if (!skipped.some((s) => s.name === key)) {
+      skipped.push({
+        name: key,
+        severity: vuln.severity,
+        reason: "Could not determine fix version from advisory ranges",
+        url: getAdvisoryUrl(vuln),
+      });
+    }
+    return;
+  }
+
+  const fixVersion = resolvePublishedVersion(name, candidate, null, lineRange);
+  if (!fixVersion) {
+    skipped.push({
+      name: key,
+      severity: vuln.severity,
+      reason: `No published version >= ${candidate} within ${lineRange} found on the npm registry`,
+      url: getAdvisoryUrl(vuln),
+    });
+    return;
+  }
+
+  const existing = packageJson.overrides[key];
+  if (existing && semver.valid(existing) && semver.gte(existing, fixVersion)) return;
+
+  packageJson.overrides[key] = fixVersion;
+  added.push({
+    name: key,
+    severity: vuln.severity,
+    version: fixVersion,
+    url: getAdvisoryUrl(vuln),
+  });
+}
+
+function safeIntersects(a, b) {
+  try {
+    return semver.intersects(a, b);
+  } catch {
+    return false;
+  }
+}
 
 /** Major-version number of a version string ("7.18.1" → 7, "^8.3.0" → 8). */
 function majorOf(version) {
@@ -282,9 +396,10 @@ function bumpPatch(version) {
  * Returns the resolved version string, or null if the registry query fails or
  * no published version satisfies the candidate. When maxMajor is provided,
  * versions above that major are excluded, so the fix never crosses a major
- * boundary even if the registry has newer majors published.
+ * boundary even if the registry has newer majors published. When withinRange
+ * is provided, only versions satisfying it are considered.
  */
-function resolvePublishedVersion(name, candidate, maxMajor = null) {
+function resolvePublishedVersion(name, candidate, maxMajor = null, withinRange = null) {
   let versions;
   try {
     // `npm view <pkg> versions --json` returns a JSON array of all published
@@ -306,6 +421,7 @@ function resolvePublishedVersion(name, candidate, maxMajor = null) {
   for (const v of versions) {
     if (v.includes("-")) continue; // prerelease — not a safe auto-pin target
     if (maxMajor != null && majorOf(v) > maxMajor) continue; // stay in-major
+    if (withinRange && !semver.satisfies(v, withinRange)) continue; // stay on line
     if (compareVersions(v, candidate) < 0) continue;
     if (best === null || compareVersions(v, best) < 0) {
       best = v;
