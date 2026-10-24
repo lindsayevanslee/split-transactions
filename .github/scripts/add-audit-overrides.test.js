@@ -34,11 +34,12 @@ afterEach(() => {
 });
 
 /** Runs the script with a stubbed `npm` on PATH and returns {summary, pkg}. */
-function run(auditObj, pkgObj, publishedVersions) {
+function run(auditObj, pkgObj, publishedVersions, lockObj = null) {
   const auditFile = join(workdir, "audit.json");
   const pkgFile = join(workdir, "package.json");
   writeFileSync(auditFile, JSON.stringify(auditObj));
   writeFileSync(pkgFile, JSON.stringify(pkgObj));
+  if (lockObj) writeFileSync(join(workdir, "package-lock.json"), JSON.stringify(lockObj));
 
   // Fake npm: respond to `npm view <pkg> versions --json` with the canned list.
   const npmPath = join(binDir, "npm");
@@ -174,5 +175,110 @@ describe("add-audit-overrides major-version cap", () => {
     const { pkg: out } = run(audit, pkg, publishedRR);
     // fixAvailable.version 7.18.1 (isSemVerMajor:false) anchors the cap at v7.
     expect(out.overrides["react-router"]).toBe("7.18.0");
+  });
+});
+
+describe("add-audit-overrides scoped overrides (lockfile present)", () => {
+  // A flat "minimatch": "9.0.7" override forced eslint's minimatch 3.x copies
+  // onto 9.x. With the lockfile available, the override is scoped to the
+  // version line of each vulnerable copy instead.
+  const lock = (copies) => ({
+    lockfileVersion: 3,
+    packages: Object.fromEntries(
+      Object.entries(copies).map(([path, version]) => [path, { version }])
+    ),
+  });
+  const vuln = (name, nodes, ranges) => ({
+    name,
+    severity: "high",
+    isDirect: false,
+    fixAvailable: true,
+    nodes,
+    via: ranges.map((range) => ({ name, range, url: `https://ex/${range}` })),
+  });
+
+  it("scopes the override to the vulnerable copy's major and leaves other copies alone", () => {
+    const audit = {
+      vulnerabilities: {
+        minimatch: vuln("minimatch", ["node_modules/minimatch"], [">=9.0.0 <9.0.7"]),
+      },
+    };
+    const lockfile = lock({
+      "node_modules/minimatch": "9.0.5",
+      "node_modules/eslint/node_modules/minimatch": "3.1.5",
+    });
+    const { pkg, summary } = run(audit, basePkg(), ["3.1.5", "9.0.5", "9.0.7", "10.2.6"], lockfile);
+    expect(pkg.overrides).toEqual({ "minimatch@^9": "9.0.7" });
+    expect(summary.added.map((a) => a.name)).toEqual(["minimatch@^9"]);
+  });
+
+  it("treats 0.x minors as separate lines (esbuild ^0.25 vs 0.28)", () => {
+    const audit = {
+      vulnerabilities: {
+        esbuild: vuln("esbuild", ["node_modules/vite/node_modules/esbuild"], ["<0.25.10"]),
+      },
+    };
+    const lockfile = lock({ "node_modules/vite/node_modules/esbuild": "0.25.4" });
+    const { pkg } = run(audit, basePkg(), ["0.25.4", "0.25.10", "0.25.12", "0.28.1"], lockfile);
+    expect(pkg.overrides).toEqual({ "esbuild@^0.25": "0.25.10" });
+  });
+
+  it("writes one override per vulnerable line", () => {
+    const audit = {
+      vulnerabilities: {
+        minimatch: vuln(
+          "minimatch",
+          ["node_modules/minimatch", "node_modules/eslint/node_modules/minimatch"],
+          ["<3.1.4", ">=9.0.0 <9.0.7"]
+        ),
+      },
+    };
+    const lockfile = lock({
+      "node_modules/minimatch": "9.0.5",
+      "node_modules/eslint/node_modules/minimatch": "3.1.2",
+    });
+    const { pkg, summary } = run(audit, basePkg(), ["3.1.2", "3.1.4", "9.0.5", "9.0.7"], lockfile);
+    expect(pkg.overrides).toEqual({ "minimatch@^9": "9.0.7", "minimatch@^3": "3.1.4" });
+    // The 9.x advisory does not apply to the 3.x copy, so nothing is flagged.
+    expect(summary.skipped).toEqual([]);
+  });
+
+  it("flags a line with no in-line fix for human review instead of forcing a new major (uuid ^9 case)", () => {
+    const audit = {
+      vulnerabilities: {
+        uuid: vuln("uuid", ["node_modules/gaxios/node_modules/uuid"], ["<11.1.1"]),
+      },
+    };
+    const lockfile = lock({ "node_modules/gaxios/node_modules/uuid": "9.0.1" });
+    const { pkg, summary } = run(audit, basePkg(), ["9.0.1", "11.1.1", "14.0.0"], lockfile);
+    expect(pkg.overrides).toEqual({});
+    expect(summary.skipped).toHaveLength(1);
+    expect(summary.skipped[0].name).toBe("uuid@^9");
+    expect(summary.skipped[0].reason).toMatch(/beyond \^9 \(>= 11\.1\.1\)/);
+  });
+
+  it("does not rewrite an existing scoped override that already clears the advisory", () => {
+    const audit = {
+      vulnerabilities: {
+        minimatch: vuln("minimatch", ["node_modules/minimatch"], [">=9.0.0 <9.0.7"]),
+      },
+    };
+    const lockfile = lock({ "node_modules/minimatch": "9.0.8" });
+    const pkgIn = { ...basePkg(), overrides: { "minimatch@^9": "9.0.8" } };
+    const { pkg, summary } = run(audit, pkgIn, ["9.0.7", "9.0.8"], lockfile);
+    expect(pkg.overrides).toEqual({ "minimatch@^9": "9.0.8" });
+    expect(summary.added).toEqual([]);
+  });
+
+  it("keeps updating an existing unscoped override in place", () => {
+    const audit = {
+      vulnerabilities: {
+        "@babel/core": { ...advisory("<=7.29.0"), nodes: ["node_modules/@babel/core"] },
+      },
+    };
+    const lockfile = lock({ "node_modules/@babel/core": "7.28.0" });
+    const pkgIn = { ...basePkg(), overrides: { "@babel/core": "7.28.0" } };
+    const { pkg } = run(audit, pkgIn, ["7.28.0", "7.29.6", "8.0.0"], lockfile);
+    expect(pkg.overrides).toEqual({ "@babel/core": "7.29.6" });
   });
 });
