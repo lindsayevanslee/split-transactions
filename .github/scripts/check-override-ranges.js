@@ -11,10 +11,15 @@
  * installed copy of each overridden package, and checks it against the range
  * declared by every package that depends on it.
  *
- * Usage: node check-override-ranges.js <project-dir> [<project-dir> ...]
+ * Usage: node check-override-ranges.js [--allow <name>]... <project-dir>...
  *
  * Each project dir must contain package.json and a lockfileVersion 2/3
  * package-lock.json. Exits 1 if any mismatch is found.
+ *
+ * --allow <name> accepts mismatches for that package, for an override that is
+ * known to be out of range and kept on purpose. It fails if the allowed
+ * package no longer has a mismatch anywhere, so the exception gets removed
+ * once it is no longer needed.
  */
 
 import { readFileSync } from "fs";
@@ -96,8 +101,8 @@ export function findOverrideMismatches(packageJson, lockfile) {
         if (!resolved) continue;
         let { entry: target, path: targetPath } = resolved;
         if (target.link) {
-          target = packages[target.resolved] || {};
-          targetPath = target.resolved || targetPath;
+          targetPath = target.resolved;
+          target = packages[targetPath] || {};
         }
         if (!target.version) continue;
 
@@ -133,26 +138,56 @@ function checkProject(dir) {
   return findOverrideMismatches(packageJson, lockfile);
 }
 
-function main(dirs) {
+export function parseArgs(argv) {
+  const allow = new Set();
+  const dirs = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--allow") {
+      if (!argv[i + 1]) throw new Error("--allow needs a package name");
+      allow.add(argv[++i]);
+    } else {
+      dirs.push(argv[i]);
+    }
+  }
+  return { allow, dirs };
+}
+
+function main(argv) {
+  const { allow, dirs } = parseArgs(argv);
   if (dirs.length === 0) {
-    console.error("Usage: node check-override-ranges.js <project-dir> [<project-dir> ...]");
+    console.error("Usage: node check-override-ranges.js [--allow <name>]... <project-dir>...");
     return 1;
   }
   let failed = false;
+  let mismatched = false;
+  const allowUsed = new Set();
   for (const dir of dirs) {
-    const mismatches = checkProject(dir);
+    const all = checkProject(dir);
+    const allowed = all.filter((m) => allow.has(m.name));
+    const mismatches = all.filter((m) => !allow.has(m.name));
+    for (const m of allowed) {
+      allowUsed.add(m.name);
+      console.log(`${dir}: allowed by --allow ${m.name}: ${formatMismatch(m)}`);
+    }
     if (mismatches.length === 0) {
-      console.log(`${dir}: all overrides satisfy their dependents' ranges.`);
+      console.log(`${dir}: all other overrides satisfy their dependents' ranges.`);
       continue;
     }
-    failed = true;
+    failed = mismatched = true;
     console.error(`${dir}: ${mismatches.length} override mismatch(es):`);
     for (const m of mismatches) console.error(`  - ${formatMismatch(m)}`);
   }
-  if (failed) {
+  for (const name of allow) {
+    if (!allowUsed.has(name)) {
+      failed = true;
+      console.error(`--allow ${name} no longer matches any mismatch. Remove it.`);
+    }
+  }
+  if (mismatched) {
     console.error(
       "\nAn override forces a version outside what a dependent declares (often a" +
-        " different major line). Update or remove the override in package.json."
+        " different major line). Update or remove the override in package.json," +
+        " or upgrade the dependent so the patched version is in its range."
     );
   }
   return failed ? 1 : 0;

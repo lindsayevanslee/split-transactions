@@ -42,6 +42,19 @@ jobs:
       - name: Test (root)
         run: npm run test:run
 
+      # npm applies overrides silently, so an override that forces a version
+      # outside what a dependent declares (e.g. body-parser 1.x into express 5)
+      # shows as "overridden" in `npm ls` and passes `npm audit`. This check
+      # reads both lockfiles and fails on any such override.
+      #
+      # --allow @grpc/grpc-js: @firebase/firestore (even the latest firebase)
+      # asks for ~1.9.0, and every 1.9.x is vulnerable, so the override to
+      # 1.13.6 stays. grpc-js is not in the browser bundle; it only loads when
+      # firestore runs under Node. The check fails once this is no longer
+      # needed, so the flag gets removed.
+      - name: Check overrides fit dependents' ranges
+        run: node .github/scripts/check-override-ranges.js --allow @grpc/grpc-js . functions
+
       # --- Functions project ---
       # Uses its own lockfile, so install and build it separately.
       - name: Install functions dependencies
