@@ -7,11 +7,16 @@
  *     stored in git config,
  *   - the default GITHUB_TOKEN stays read-only (all writes use the app token),
  *   - a failed `npm audit signatures` must fail the run, not just be logged,
- *   - the app token uses client-id (app-id is deprecated by the action).
+ *   - the app token uses client-id (app-id is deprecated by the action),
+ *   - overrides are reconciled with their dependents' ranges and checked with
+ *     the same command CI runs before the PR is opened, so the PR does not
+ *     fail its own override-range check (PR #71: fast-xml-parser 5.12.0 wants
+ *     fast-xml-builder ^1.3.1, but the older 1.1.7 override was left behind).
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { parseArgs } from "./check-override-ranges.js";
 
 const WORKFLOW = readFileSync(
   resolve(process.cwd(), ".github/workflows/security-audit.yml"),
@@ -68,7 +73,11 @@ describe("security-audit workflow", () => {
       expect(l).not.toContain("|| true");
       expect(l).not.toContain("| tee"); // a pipe would hide npm's exit code
     }
-    expect(WORKFLOW.match(/echo "exit_code=\$\?" >> "\$GITHUB_OUTPUT"/g)).toHaveLength(2);
+    // The exit code is captured on the very next line of each script.
+    for (const l of sigLines) {
+      const next = lines[lines.indexOf(l) + 1];
+      expect(next.trim()).toBe('echo "exit_code=$?" >> "$GITHUB_OUTPUT"');
+    }
   });
 
   it("decides signature failures from exit codes, not by grepping the output", () => {
@@ -86,5 +95,88 @@ describe("security-audit workflow", () => {
     expect(step).toMatch(/exit 1/);
     // It must come after the PR step so fixes are still proposed.
     expect(idx).toBeGreaterThan(lines.findIndex((l) => l.includes("name: Create or update PR")));
+  });
+
+  describe("override range reconciliation", () => {
+    const stepIndex = (name) => lines.findIndex((l) => l.trim() === `- name: ${name}`);
+    const scriptLines = (script) =>
+      lines.filter((l) => l.trim().startsWith(`node .github/scripts/${script}`));
+    const argsOf = (line, script) =>
+      parseArgs(line.trim().replace(`node .github/scripts/${script}`, "").split(">")[0].trim().split(/\s+/));
+
+    const ciCheckArgs = () => {
+      const ci = readFileSync(resolve(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+      const line = ci
+        .split("\n")
+        .map((l) => l.trim())
+        .find((l) => l.startsWith("run: node .github/scripts/check-override-ranges.js"));
+      return argsOf(line.replace("run: ", ""), "check-override-ranges.js");
+    };
+
+    it("reconciles both projects' overrides after the audit overrides are added", () => {
+      const runs = scriptLines("reconcile-overrides.js");
+      expect(runs).toHaveLength(2);
+      const dirs = runs.map((l) => argsOf(l, "reconcile-overrides.js").dirs).flat();
+      expect(dirs.sort()).toEqual([".", "functions"]);
+      // Same --allow list as the check, so a mismatch kept on purpose is not "fixed".
+      for (const l of runs) {
+        expect([...argsOf(l, "reconcile-overrides.js").allow]).toEqual([...ciCheckArgs().allow]);
+      }
+      const lastAddOverrides = Math.max(
+        stepIndex("Add overrides for root vulnerabilities"),
+        stepIndex("Add overrides for functions vulnerabilities")
+      );
+      expect(lastAddOverrides).toBeGreaterThanOrEqual(0);
+      for (const l of runs) expect(lines.indexOf(l)).toBeGreaterThan(lastAddOverrides);
+    });
+
+    it("regenerates each lockfile after reconciling, before the check runs", () => {
+      const check = lines.findIndex((l) => l.trim().startsWith("node .github/scripts/check-override-ranges.js"));
+      for (const run of scriptLines("reconcile-overrides.js")) {
+        const at = lines.indexOf(run);
+        const regen = lines.findIndex(
+          (l, i) => i > at && /^npm install --package-lock-only\b/.test(l.trim().replace(/^run: /, ""))
+        );
+        expect(regen).toBeGreaterThan(at);
+        expect(regen).toBeLessThan(check);
+      }
+    });
+
+    it("runs the same override range check as CI before opening the PR", () => {
+      const runs = scriptLines("check-override-ranges.js");
+      expect(runs).toHaveLength(1);
+      const args = argsOf(runs[0], "check-override-ranges.js");
+      const ci = ciCheckArgs();
+      expect(args.dirs.sort()).toEqual(ci.dirs.sort());
+      expect([...args.allow].sort()).toEqual([...ci.allow].sort());
+      const at = lines.indexOf(runs[0]);
+      expect(at).toBeLessThan(stepIndex("Check for changes"));
+      expect(at).toBeLessThan(stepIndex("Create or update PR"));
+      // Its exit code is captured rather than swallowed.
+      expect(runs[0]).not.toContain("|| true");
+      expect(lines[at + 1].trim()).toBe('echo "exit_code=$?" >> "$GITHUB_OUTPUT"');
+    });
+
+    it("fails the run after the PR step when the check fails", () => {
+      const idx = lines.findIndex((l) =>
+        l.includes("if: steps.override-check.outputs.exit_code != '0'")
+      );
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(lines.slice(idx, idx + 5).join("\n")).toMatch(/exit 1/);
+      expect(idx).toBeGreaterThan(stepIndex("Create or update PR"));
+    });
+
+    it("mentions the reconciliation and the check result in the PR body", () => {
+      const start = stepIndex("Build PR description");
+      const end = stepIndex("Create or update PR");
+      const body = lines.slice(start, end).join("\n");
+      expect(body).toContain("/tmp/root-reconcile.json");
+      expect(body).toContain("/tmp/functions-reconcile.json");
+      expect(body).toContain("OVERRIDE_CHECK_EXIT: ${{ steps.override-check.outputs.exit_code }}");
+      expect(body).toContain("/tmp/override-check.txt");
+      // The reconcile script writes these files, so the body reads what it wrote.
+      expect(WORKFLOW).toContain("reconcile-overrides.js --allow @grpc/grpc-js . > /tmp/root-reconcile.json");
+      expect(WORKFLOW).toContain("reconcile-overrides.js --allow @grpc/grpc-js functions > /tmp/functions-reconcile.json");
+    });
   });
 });
