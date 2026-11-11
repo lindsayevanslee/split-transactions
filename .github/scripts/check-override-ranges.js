@@ -50,10 +50,17 @@ export function overriddenNames(overrides = {}) {
   return names;
 }
 
-// Override keys may carry a version selector, e.g. "foo@^1" or "@scope/foo@2".
-function packageNameFromSpec(spec) {
+/**
+ * Splits an override key into the package name and its optional version
+ * selector: "foo@^1" -> ["foo", "^1"], "@scope/foo" -> ["@scope/foo", null].
+ */
+export function parseOverrideKey(spec) {
   const at = spec.indexOf("@", 1);
-  return at === -1 ? spec : spec.slice(0, at);
+  return at === -1 ? [spec, null] : [spec.slice(0, at), spec.slice(at + 1)];
+}
+
+function packageNameFromSpec(spec) {
+  return parseOverrideKey(spec)[0];
 }
 
 // "node_modules/a/node_modules/@s/b" -> "@s/b"
@@ -79,14 +86,18 @@ function resolveDep(packages, fromPath, name) {
 }
 
 /**
- * Returns a list of mismatches: installed copies of overridden packages whose
- * version falls outside a dependent's declared range.
+ * Lists every declared dependency on an overridden package: which lockfile
+ * entry depends on it, the range it declares, the copy it resolves to, and
+ * whether that copy satisfies the range. `findOverrideMismatches` keeps the
+ * unsatisfied ones; reconcile-overrides.js needs the satisfied ones too, so a
+ * new override version is checked against every dependent, not just the
+ * mismatched ones.
  */
-export function findOverrideMismatches(packageJson, lockfile) {
+export function overrideDependents(packageJson, lockfile) {
   const names = overriddenNames(packageJson.overrides);
   const packages = lockfile.packages || {};
-  const mismatches = [];
-  if (names.size === 0) return mismatches;
+  const edges = [];
+  if (names.size === 0) return edges;
 
   for (const [path, entry] of Object.entries(packages)) {
     for (const field of DEP_FIELDS) {
@@ -106,22 +117,31 @@ export function findOverrideMismatches(packageJson, lockfile) {
         }
         if (!target.version) continue;
 
-        if (!semver.satisfies(target.version, range, { includePrerelease: true })) {
-          mismatches.push({
-            name,
-            installed: target.version,
-            installedAt: targetPath,
-            dependent: path === "" ? "(project root)" : nameFromPath(path),
-            dependentVersion: entry.version,
-            dependentPath: path,
-            field,
-            range,
-          });
-        }
+        edges.push({
+          name,
+          installed: target.version,
+          installedAt: targetPath,
+          dependent: path === "" ? "(project root)" : nameFromPath(path),
+          dependentVersion: entry.version,
+          dependentPath: path,
+          field,
+          range,
+          satisfied: semver.satisfies(target.version, range, { includePrerelease: true }),
+        });
       }
     }
   }
-  return mismatches;
+  return edges;
+}
+
+/**
+ * Returns a list of mismatches: installed copies of overridden packages whose
+ * version falls outside a dependent's declared range.
+ */
+export function findOverrideMismatches(packageJson, lockfile) {
+  return overrideDependents(packageJson, lockfile)
+    .filter((e) => !e.satisfied)
+    .map(({ satisfied, ...mismatch }) => mismatch);
 }
 
 export function formatMismatch(m) {

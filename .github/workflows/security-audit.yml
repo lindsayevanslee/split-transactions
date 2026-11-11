@@ -95,6 +95,39 @@ jobs:
         working-directory: functions
         run: npm install --package-lock-only --ignore-scripts
 
+      # --- Reconcile overrides with their dependents' ranges ---
+      # Bumping one override can move another out of range: raising
+      # fast-xml-parser 5.7.0 -> 5.12.0 (PR #71) changed its requirement to
+      # fast-xml-builder ^1.3.1 while the older "fast-xml-builder": "1.1.7"
+      # override stayed, so the PR failed CI's override-range check. The
+      # reconcile script bumps such overrides to the lowest published version
+      # that satisfies every dependent and still clears the original advisory,
+      # never crossing a major line. Anything it cannot resolve is listed in
+      # the PR body, and the same check CI runs then fails this run below.
+      - name: Reconcile root overrides with dependents' ranges
+        run: |
+          node .github/scripts/reconcile-overrides.js --allow @grpc/grpc-js . > /tmp/root-reconcile.json
+
+      - name: Regenerate root lockfile after reconciliation
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Reconcile functions overrides with dependents' ranges
+        run: |
+          node .github/scripts/reconcile-overrides.js --allow @grpc/grpc-js functions > /tmp/functions-reconcile.json
+
+      - name: Regenerate functions lockfile after reconciliation
+        working-directory: functions
+        run: npm install --package-lock-only --ignore-scripts
+
+      # Same invocation as ci.yml, so the PR this run opens passes that check.
+      - name: Check overrides fit dependents' ranges
+        id: override-check
+        run: |
+          set +e
+          node .github/scripts/check-override-ranges.js --allow @grpc/grpc-js . functions > /tmp/override-check.txt 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat /tmp/override-check.txt
+
       # --- Check for invalid package signatures ---
       # npm audit signatures exits non-zero for invalid OR missing signatures,
       # and also when it could not check at all (e.g. the registry keys failed
@@ -128,6 +161,8 @@ jobs:
       - name: Build PR description
         if: steps.changes.outputs.has_changes == 'true'
         id: pr-body
+        env:
+          OVERRIDE_CHECK_EXIT: ${{ steps.override-check.outputs.exit_code }}
         run: |
           {
             echo "body<<EOF"
@@ -156,6 +191,30 @@ jobs:
 
               formatSection('Root project', root);
               formatSection('Functions project', funcs);
+
+              // Overrides moved to stay inside their dependents' ranges after
+              // the bumps above, plus any the script had to leave for a human.
+              const rootRec = JSON.parse(readFileSync('/tmp/root-reconcile.json', 'utf8'));
+              const funcsRec = JSON.parse(readFileSync('/tmp/functions-reconcile.json', 'utf8'));
+              function formatReconciled(label, rec) {
+                if ((rec.bumped || []).length > 0) {
+                  lines.push('', '### ' + label + ' \u2014 overrides reconciled with dependents');
+                  rec.bumped.forEach(b => lines.push('- **' + b.name + '** \`' + b.from + '\` \u2192 \`' + b.to + '\`, required by ' + b.dependents.join('; ')));
+                }
+                if ((rec.unresolved || []).length > 0) {
+                  lines.push('', '### ' + label + ' \u2014 overrides needing manual reconciliation');
+                  rec.unresolved.forEach(u => lines.push('- **' + u.name + '** \`' + u.installed + '\`: ' + u.reason));
+                }
+              }
+              formatReconciled('Root project', rootRec);
+              formatReconciled('Functions project', funcsRec);
+
+              lines.push('', '### Override range check');
+              if (process.env.OVERRIDE_CHECK_EXIT === '0') {
+                lines.push('Passed: every override satisfies its dependents\' declared ranges (the same check CI runs).');
+              } else {
+                lines.push('**Failed** \u2014 CI will fail on this PR until the overrides below are fixed by hand:', '', '\`\`\`', readFileSync('/tmp/override-check.txt', 'utf8').trim(), '\`\`\`');
+              }
 
               // Include signature verification results
               const rootSigs = readFileSync('/tmp/root-signatures.txt', 'utf8');
@@ -219,4 +278,12 @@ jobs:
         if: steps.signatures.outputs.has_failures == 'true'
         run: |
           echo "::error::npm audit signatures failed. See the 'Verify package provenance' steps. Do not merge dependency changes until this is understood."
+          exit 1
+
+      # Same placement: the PR (with the unresolved overrides listed in its
+      # body) is still opened, but it would fail CI, so fail here too.
+      - name: Fail on override range check failures
+        if: steps.override-check.outputs.exit_code != '0'
+        run: |
+          echo "::error::An override is outside a dependent's declared range and could not be reconciled automatically. See the 'Check overrides fit dependents' ranges' step and fix the override by hand."
           exit 1
